@@ -7,7 +7,7 @@ import SwiftUI
 /// | Kitaplar     | SwiftUI                          | async/await, `@Observable`, `async let`, actor  |
 /// | Favoriler    | UIKit (SwiftUI içine gömülü)     | UIViewController, diffable data source, interop |
 /// | Laboratuvar  | SwiftUI                          | Task, TaskGroup, actor vs data race, iptal      |
-/// | Temeller     | SwiftUI + Objective-C            | struct vs class, protocol'ler, ObjC köprüsü     |
+/// | Mülakat      | SwiftUI + UIKit + Objective-C    | Sık sorulan mülakat soruları: cevap + canlı demo |
 struct RootTabView: View {
     let dependencies: AppDependencies
 
@@ -22,8 +22,8 @@ struct RootTabView: View {
             ConcurrencyLabView()
                 .tabItem { Label(AccessibilityID.Tab.lab, systemImage: "flask") }
 
-            FundamentalsView()
-                .tabItem { Label(AccessibilityID.Tab.fundamentals, systemImage: "square.stack.3d.up") }
+            InterviewHubView(dependencies: dependencies)
+                .tabItem { Label(AccessibilityID.Tab.interview, systemImage: "person.bubble") }
         }
     }
 }

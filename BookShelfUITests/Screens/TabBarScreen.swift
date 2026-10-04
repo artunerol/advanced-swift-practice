@@ -35,8 +35,8 @@ struct TabBarScreen: Screen {
     }
 
     @discardableResult
-    func openFundamentals() -> FundamentalsScreen {
-        tabButton(AccessibilityID.Tab.fundamentals).tap()
-        return FundamentalsScreen(app: app)
+    func openInterview() -> InterviewHubScreen {
+        tabButton(AccessibilityID.Tab.interview).tap()
+        return InterviewHubScreen(app: app)
     }
 }

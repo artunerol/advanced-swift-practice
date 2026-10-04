@@ -2,7 +2,7 @@ import SwiftUI
 
 /// ISBN-13 doğrulayıcı ekranı: SwiftUI arayüzü, doğrulama işini Objective-C'de yazılmış `BKISBNValidator`'a yaptırır.
 ///
-/// Sözleşme: Kendi `NavigationStack`'ini İÇERMEZ; `FundamentalsView`'daki yığına (stack) push edilir.
+/// Sözleşme: Kendi `NavigationStack`'ini İÇERMEZ; Mülakat merkezindeki konu ekranının (`InterviewTopicScreen`) içinde gösterilir.
 /// İçine bir `NavigationStack` daha koysaydık iç içe iki navigasyon yığını oluşur, başlık ve geri düğmesi karışırdı.
 struct ISBNCheckerView: View {
     /// Metin kutusunun içeriği. `@State`: Bu değerin sahibi view'dur; SwiftUI onu view yeniden oluşturulsa da saklar.

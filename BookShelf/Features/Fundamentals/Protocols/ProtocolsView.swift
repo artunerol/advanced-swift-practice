@@ -5,7 +5,7 @@ import SwiftUI
 /// - **Raf:** `associatedtype`'lı `Shelf` protocol'ü, generic `ReadingShelf<Novel>` ve `Comparable` ile sıralama.
 /// - **Dispatch:** Gereksinim ile extension'a özel üye arasındaki fark ve protocol ile bağımlılık enjeksiyonu.
 ///
-/// Kendi `NavigationStack`'ini içermez; `FundamentalsView`'daki yığına push edilir.
+/// Kendi `NavigationStack`'ini içermez; Mülakat merkezindeki konu ekranının (`InterviewTopicScreen`) içinde gösterilir.
 struct ProtocolsView: View {
     enum Experiment: CaseIterable, Identifiable {
         case list, shelf, dispatch

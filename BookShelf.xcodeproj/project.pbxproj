@@ -161,8 +161,8 @@
 				0B5E00000000000000000053 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				0B5E00000000000000000013 /* BookShelfUITests */,
 				0B5E00000000000000000011 /* Shared */,
+				0B5E00000000000000000013 /* BookShelfUITests */,
 			);
 			name = BookShelfUITests;
 			packageProductDependencies = (

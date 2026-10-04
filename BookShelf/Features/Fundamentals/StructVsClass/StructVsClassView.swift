@@ -5,7 +5,7 @@ import SwiftUI
 /// Tüm mantık saf Swift tiplerinde (`CopySemanticsDemo`, `CopyOnWriteDemo`, `RetainCycleDemo`); bu view sadece
 /// onları gösterip düğmelere bağlıyor. Böylece mantık, SwiftUI olmadan birim testlerle doğrulanabiliyor.
 ///
-/// Kendi `NavigationStack`'ini içermez; `FundamentalsView`'daki yığına push edilir.
+/// Kendi `NavigationStack`'ini içermez; Mülakat merkezindeki konu ekranının (`InterviewTopicScreen`) içinde gösterilir.
 struct StructVsClassView: View {
     /// Ekranın üstündeki bölüm seçicinin seçenekleri. Etiketler `Shared/` altındaki sabitlerden gelir,
     /// böylece UI testleri de birebir aynı metinleri kullanır.

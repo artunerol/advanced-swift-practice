@@ -1,13 +1,28 @@
 import XCTest
 
-/// Temeller sekmesi: struct vs class deneyi ve Objective-C ISBN doğrulayıcısı.
+/// Mülakat sekmesindeki iki demo: struct vs class deneyi ve Objective-C ISBN doğrulayıcısı.
 final class FundamentalsUITests: BookShelfUITestCase {
+
+    /// Uygulamayı açar, Mülakat sekmesinde konuyu bulur, "Demo" bölümüne geçer ve demo ekranını bekler.
+    @MainActor
+    private func openDemo<S: Screen>(
+        _ topicID: String,
+        as screenType: S.Type,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> S {
+        let app = launchApp(file: file, line: line)
+        TabBarScreen(app: app).openInterview().waitUntilDisplayed(file: file, line: line)
+            .openTopic(topicID, file: file, line: line)
+            .showDemo()
+        return screenType.init(app: app).waitUntilDisplayed(file: file, line: line)
+    }
 
     // MARK: - Struct vs Class
 
     @MainActor
     func testMutatingCopiesLeavesStructOriginalButChangesClassOriginal() {
-        let screen = TabBarScreen(app: launchApp()).openFundamentals().waitUntilDisplayed().openStructVsClass()
+        let screen = openDemo(AccessibilityID.Interview.TopicID.structVsClass, as: StructVsClassScreen.self)
 
         XCTContext.runActivity(named: "Başlangıç: orijinaller ve kopyalar aynı sayfada") { _ in
             assertLabel(screen.structOriginal, equals: "Orijinal: 10. sayfa")
@@ -33,7 +48,7 @@ final class FundamentalsUITests: BookShelfUITestCase {
 
     @MainActor
     func testStrongReferenceCycleLeaksAndWeakReferenceDoesNot() {
-        let screen = TabBarScreen(app: launchApp()).openFundamentals().waitUntilDisplayed().openStructVsClass()
+        let screen = openDemo(AccessibilityID.Interview.TopicID.structVsClass, as: StructVsClassScreen.self)
         screen.selectExperiment(AccessibilityID.Fundamentals.StructVsClass.arcSegment)
 
         XCTContext.runActivity(named: "strong ↔ strong: iki nesne de serbest bırakılmaz") { _ in
@@ -53,7 +68,7 @@ final class FundamentalsUITests: BookShelfUITestCase {
 
     @MainActor
     func testISBNCheckerAcceptsValidISBN() {
-        let checker = TabBarScreen(app: launchApp()).openFundamentals().waitUntilDisplayed().openISBNChecker()
+        let checker = openDemo(AccessibilityID.Interview.TopicID.objcInterop, as: ISBNCheckerScreen.self)
 
         checker.check("978-605-000-001-6")
 
@@ -65,7 +80,7 @@ final class FundamentalsUITests: BookShelfUITestCase {
 
     @MainActor
     func testISBNCheckerExplainsChecksumMismatch() {
-        let checker = TabBarScreen(app: launchApp()).openFundamentals().waitUntilDisplayed().openISBNChecker()
+        let checker = openDemo(AccessibilityID.Interview.TopicID.objcInterop, as: ISBNCheckerScreen.self)
 
         // "Huzur"un kasıtlı olarak hatalı ISBN'i.
         checker.check("978-605-000-008-6")
@@ -78,7 +93,7 @@ final class FundamentalsUITests: BookShelfUITestCase {
 
     @MainActor
     func testEditingInputClearsPreviousResult() {
-        let checker = TabBarScreen(app: launchApp()).openFundamentals().waitUntilDisplayed().openISBNChecker()
+        let checker = openDemo(AccessibilityID.Interview.TopicID.objcInterop, as: ISBNCheckerScreen.self)
 
         XCTContext.runActivity(named: "Örnek düğmesiyle doldur ve doğrula") { _ in
             checker.lettersSampleButton.tap()

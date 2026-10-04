@@ -1,12 +1,8 @@
 import Foundation
 
-// Sahibi: Temeller sekmesi (struct vs class, protocol'ler). Yeni kimlik gerekirse buraya ekle.
+// Sahibi: Swift temelleri demoları (struct vs class, protocol'ler). Mülakat merkezinin konu ekranlarında gösterilir.
 extension AccessibilityID {
     enum Fundamentals {
-        static let structVsClassLink = "fundamentals.structVsClassLink"
-        static let protocolsLink = "fundamentals.protocolsLink"
-        static let isbnCheckerLink = "fundamentals.isbnCheckerLink"
-
         /// "Struct vs Class" ekranı.
         ///
         /// Ekranın üstünde bir bölüm seçici (segmented control) var; her deney ayrı bir bölümde gösterilir.

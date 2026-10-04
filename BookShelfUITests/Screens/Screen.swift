@@ -27,6 +27,11 @@ import XCTest
 protocol Screen {
     var app: XCUIApplication { get }
 
+    /// Tüm ekranlar `struct` ve tek saklanan özellikleri `app`; derleyicinin ürettiği üye başlatıcı
+    /// (memberwise initializer) `init(app:)` bu gereksinimi kendiliğinden karşılar. Gereksinim sayesinde
+    /// `S.init(app:)` gibi generic yardımcılar yazabiliriz (bkz. `FundamentalsUITests.openDemo`).
+    init(app: XCUIApplication)
+
     /// Ekranın açıldığını kanıtlayan, ekran açıkken HER ZAMAN var olan bir öğe.
     var rootElement: XCUIElement { get }
 }

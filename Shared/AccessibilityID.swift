@@ -15,6 +15,6 @@ enum AccessibilityID {
         static let books = "Kitaplar"
         static let favorites = "Favoriler"
         static let lab = "Laboratuvar"
-        static let fundamentals = "Temeller"
+        static let interview = "Mülakat"
     }
 }

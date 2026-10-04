@@ -18,7 +18,7 @@ final class LaunchSmokeUITests: XCTestCase {
 
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 5))
-        for title in [AccessibilityID.Tab.books, AccessibilityID.Tab.favorites, AccessibilityID.Tab.lab, AccessibilityID.Tab.fundamentals] {
+        for title in [AccessibilityID.Tab.books, AccessibilityID.Tab.favorites, AccessibilityID.Tab.lab, AccessibilityID.Tab.interview] {
             XCTAssertTrue(tabBar.buttons[title].exists, "\(title) sekmesi bulunamadı")
         }
     }
