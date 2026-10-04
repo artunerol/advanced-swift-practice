@@ -1,0 +1,8 @@
+// TITLE: any Shelf<Novel> üzerinde add(_:) çağırmak
+// EXPECT: compiles
+// EXPLAIN: protocol Shelf<Item> tanımındaki <Item>, Item'ı bir primary associated type yapar (SE-0346). any Shelf<Novel> "Item'ı Novel olan herhangi bir raf" demektir (constrained existential, SE-0353). Derleyici add(_:)'in Novel istediğini bilir ve shelf.items'ın tipi [Novel] olur.
+// EXPLAIN: Not: Bu tipin bilgisi çalışma anında gerektiğinde (ör. [any Shelf<Novel>] dizisi ya da as? any Shelf<Novel>) iOS 16+ çalışma anı desteği gerekir; derleyici daha eski hedeflerde hata verir. Bu proje iOS 17'yi hedefliyor.
+
+var shelf: any Shelf<Novel> = NovelShelf()
+shelf.add(Novel(title: "Aylak Adam"))
+let titles = shelf.items.map(\.title)

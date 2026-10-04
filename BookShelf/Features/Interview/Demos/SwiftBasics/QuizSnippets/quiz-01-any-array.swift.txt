@@ -1,0 +1,9 @@
+// TITLE: Farklı tipler tek bir dizide
+// EXPECT: compiles
+// EXPLAIN: Her eleman bir existential kutu (any ReadingItem); kutunun içindeki somut tip elemandan elemana değişebilir. Farklı tipleri tek koleksiyonda tutmanın yolu budur: [some ReadingItem] ya da generic [T] tek bir somut tip ister.
+// EXPLAIN: Bedeli: 64-bit'te her eleman 40 baytlık bir kutudur (3 kelimelik değer tamponu + tip bilgisi + witness table) ve çağrılar çalışma anında witness table üzerinden çözülür.
+
+let items: [any ReadingItem] = [
+    Novel(title: "Aylak Adam"),
+    Magazine(title: "Varlık", issue: 1),
+]

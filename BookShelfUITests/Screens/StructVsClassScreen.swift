@@ -32,6 +32,20 @@ struct StructVsClassScreen: Screen {
     var deinitCount: XCUIElement { app.staticTexts[ID.retainCycleDeinitCount] }
     var verdict: XCUIElement { app.staticTexts[ID.retainCycleVerdict] }
 
+    // MARK: Bellek deneyi
+    // Kararların metni: "Aynı adres mi? Evet|Hayır". Adreslerin kendisi her çalıştırmada değişir; onları doğrulamayız.
+
+    /// Ekranın tamamını taşıyan liste; `MemoryLayout` tablosu aşağıda kaldığında kaydırmak için.
+    var list: XCUIElement { app.collectionViews[ID.list] }
+    var structCopiesVerdict: XCUIElement { app.staticTexts[ID.structCopiesVerdict] }
+    var sharedReferenceVerdict: XCUIElement { app.staticTexts[ID.sharedReferenceVerdict] }
+    var separateObjectsVerdict: XCUIElement { app.staticTexts[ID.separateObjectsVerdict] }
+
+    /// `MemoryLayout` tablosundaki satırın boyut metni, ör. "size 8 · stride 8". `key`: "struct", "class", "existential"...
+    func layoutRow(_ key: String) -> XCUIElement {
+        app.staticTexts[ID.layoutRow(key)]
+    }
+
     // MARK: Eylemler
 
     func mutateCopies() {
@@ -41,5 +55,14 @@ struct StructVsClassScreen: Screen {
     /// Bölüm seçicide bir deneyi seçer (ör. `AccessibilityID.Fundamentals.StructVsClass.arcSegment`).
     func selectExperiment(_ segmentLabel: String) {
         experimentPicker.buttons[segmentLabel].tap()
+    }
+
+    /// `MemoryLayout` tablosundaki satırı görünür hale getirir (liste tembel olduğu için alttaki satırlar
+    /// kaydırılmadan ağaçta yoktur) ve döndürür.
+    @discardableResult
+    func revealLayoutRow(_ key: String) -> XCUIElement {
+        let row = layoutRow(key)
+        list.scrollUp(toReveal: row)
+        return row
     }
 }

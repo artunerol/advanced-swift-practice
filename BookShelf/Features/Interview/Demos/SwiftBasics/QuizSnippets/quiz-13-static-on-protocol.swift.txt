@@ -1,0 +1,6 @@
+// TITLE: static gereksinimi protocol'ün kendisi üzerinden çağırmak
+// EXPECT: error: static member 'kindName' cannot be used on protocol metatype '(any ReadingItem).Type'
+// EXPLAIN: ReadingItem.kindName ifadesinde "hangi tipin kindName'i?" sorusunun cevabı yok: Protocol'ün kendisinin bir uygulaması yoktur, yalnızca uyan tiplerin vardır.
+// EXPLAIN: Çalışan yollar: somut tipten (Novel.kindName), generic içinde T.kindName ya da bir existential değerin dinamik tipinden type(of: item).kindName. Sonuncusu kutunun içindeki tipe göre çalışma anında seçilir (Magazine için "Dergi").
+
+let kind = ReadingItem.kindName

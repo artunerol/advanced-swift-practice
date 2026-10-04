@@ -1,0 +1,12 @@
+// TITLE: some dönüş tipiyle iki farklı tip döndürmek
+// EXPECT: error: function declares an opaque return type 'some ReadingItem', but the return statements in its body do not have matching underlying types
+// EXPLAIN: Dönüş tipindeki some "tek bir somut tip, ama adını saklıyorum" demektir (opaque type). Tipi fonksiyon seçer ve her yoldan AYNI tip dönmelidir; derleyici gerçek tipi bilir ve optimize edebilir. SwiftUI'daki var body: some View de böyledir.
+// EXPLAIN: Farklı tipler döndürmek gerekiyorsa dönüş tipi any ReadingItem olmalı (sonraki soru).
+
+func featured(weekend: Bool) -> some ReadingItem {
+    if weekend {
+        return Novel(title: "Aylak Adam")
+    } else {
+        return Magazine(title: "Varlık", issue: 1)
+    }
+}

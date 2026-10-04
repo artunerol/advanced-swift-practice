@@ -1,0 +1,7 @@
+// TITLE: any Shelf üzerinde add(_:) çağırmak
+// EXPECT: error: member 'add' cannot be used on value of type 'any Shelf'; consider using a generic constraint instead
+// EXPLAIN: Kutunun içindeki rafın Item tipi derleme anında bilinmiyor: Novel rafı da olabilir, başka bir tipin rafı da. add(_:) Item istediği için ona ne verileceği denetlenemez ve çağrı reddedilir. Item DÖNDÜREN üyeler (items) ise kullanılabilir; sonucun tipi üst sınıra silinir (burada [Any]).
+// EXPLAIN: Çözüm: generic yaz (func fill<S: Shelf>(_ shelf: inout S, with item: S.Item)) ya da Item'ı existential'da sabitle: any Shelf<Novel> (sonraki soru).
+
+var shelf: any Shelf = NovelShelf()
+shelf.add(Novel(title: "Aylak Adam"))

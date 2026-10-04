@@ -1,0 +1,9 @@
+// TITLE: İki any Equatable'ı == ile karşılaştırmak
+// EXPECT: error: binary operator '==' cannot be applied to two 'any Equatable' operands
+// EXPLAIN: == iki tarafın da AYNI somut tip (Self) olmasını ister. İki kutunun içinde farklı tipler olabilir (biri Int, diğeri String); derleyici bunu garanti edemediği için çağrıya izin vermez.
+// EXPLAIN: Çözüm: Aynı tipi zorunlu kılan generic bir fonksiyon yaz: func isSame<T: Equatable>(_ lhs: T, _ rhs: T) -> Bool { lhs == rhs }
+
+func isSame(_ lhs: any Equatable,
+            _ rhs: any Equatable) -> Bool {
+    lhs == rhs
+}

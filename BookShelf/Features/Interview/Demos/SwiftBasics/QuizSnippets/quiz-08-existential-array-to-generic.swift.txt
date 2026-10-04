@@ -1,0 +1,10 @@
+// TITLE: [any ReadingItem] dizisini generic fonksiyona vermek
+// EXPECT: error: type 'any ReadingItem' cannot conform to 'ReadingItem'
+// EXPLAIN: describeAll<T: ReadingItem>(_ items: [T]) dizideki TÜM elemanların aynı somut T olmasını ister. Burada T ancak any ReadingItem olabilirdi; ama kutunun kendisi ReadingItem'a uymaz. Her kutu farklı bir tip taşıyabildiği için dizi otomatik olarak da açılamaz.
+// EXPLAIN: Çözüm: existential dizi için ayrı bir fonksiyon yaz (func describeAll(_ items: [any ReadingItem])) ya da items.map { describe($0) } ile her elemanı tek tek aç.
+
+let items: [any ReadingItem] = [
+    Novel(title: "Aylak Adam"),
+    Magazine(title: "Varlık", issue: 1),
+]
+let texts = describeAll(items)

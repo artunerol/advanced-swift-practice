@@ -80,7 +80,14 @@ final class BookDetailViewModel {
 
     /// Sadece ihtiyaç duyduğu bağımlılıkları alır (tüm `AppDependencies`'i değil). Böylece testte
     /// neyin taklit edilmesi gerektiği imzadan okunur.
-    init(book: Book, service: any BookServiceProtocol, favorites: FavoritesStore) {
+    /// - Parameter pagesPerHour: Kullanıcının okuma hızı (saatte sayfa). Ekran bunu UserDefaults'tan okuyup verir
+    ///   (`readingSpeed(in:)`); view model UserDefaults'u bilmez, testte düz bir sayı vermek yeter.
+    init(
+        book: Book,
+        service: any BookServiceProtocol,
+        favorites: FavoritesStore,
+        pagesPerHour: Double = ReadingPace.defaultPagesPerHour
+    ) {
         self.book = book
         self.service = service
         self.favorites = favorites
@@ -89,7 +96,7 @@ final class BookDetailViewModel {
         // Swift'teki adları header'daki `NS_SWIFT_NAME` ile belirlenir (BKISBNValidator → ISBNValidator).
         // İkisi de senkron ve hızlı; `await` gerekmez.
         isISBNValid = ISBNValidator.isValidISBN13(book.isbn)
-        readingTimeText = ReadingTimeEstimator(pagesPerHour: 40).formattedEstimate(forPageCount: book.pageCount)
+        readingTimeText = ReadingTimeEstimator(pagesPerHour: pagesPerHour).formattedEstimate(forPageCount: book.pageCount)
     }
 
     /// Ekran açılınca `.task` tarafından çağrılır; "Tekrar Dene" düğmesi de bunu çağırır.
@@ -174,5 +181,19 @@ final class BookDetailViewModel {
         let start = clock.now
         let value = try await operation()
         return (value, start.duration(to: clock.now))
+    }
+}
+
+// MARK: - Okuma hızı ayarı (UserDefaults)
+
+extension BookDetailViewModel {
+    /// Okuma hızı ayarının UserDefaults anahtarı. Ayarı Mülakat → Kalıcılık demosundaki `@AppStorage` yazar.
+    /// UserDefaults'un tam olarak bunun için olduğu bir örnek: küçük, kullanıcıya ait bir tercih.
+    nonisolated static let readingSpeedKey = "settings.readingSpeedPagesPerHour"
+
+    /// Kayıtlı okuma hızını okur. Kayıt yoksa `double(forKey:)` 0 döndürür; `ReadingPace.resolved` 0'ı, negatifi
+    /// ve NaN'ı varsayılana (saatte 40 sayfa) çevirir.
+    nonisolated static func readingSpeed(in defaults: UserDefaults) -> Double {
+        ReadingPace.resolved(pagesPerHour: defaults.double(forKey: readingSpeedKey))
     }
 }

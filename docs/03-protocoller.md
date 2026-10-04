@@ -4,9 +4,12 @@
 
 Swift'te soyutlamanın ana aracı class kalıtımı değil **protocol**'lerdir. Standart kütüphane baştan sona protocol'ler üzerine kuruludur (`Equatable`, `Collection`, `Codable`, `Sendable`...), SwiftUI'daki her view bir `View` protocol'üne uyar ve bağımlılık enjeksiyonu (dependency injection) ile test edilebilir kod yazmanın en yaygın yolu protocol'lerdir.
 
-Bu derste şunları öğreneceksin: protocol tanımlamak ve uymak, extension ile varsayılan davranış eklemek, statik/dinamik dispatch tuzağı, `associatedtype` ve generic'ler, `some` ile `any` farkı, protocol birleşimi, standart protocol'ler ve protocol ile bağımlılık enjeksiyonu.
+Bu derste şunları öğreneceksin: protocol tanımlamak ve uymak, extension ile varsayılan davranış eklemek, statik/dinamik dispatch tuzağı, `associatedtype` ve generic'ler, `some` ile `any` farkı, protocol birleşimi, standart protocol'ler, protocol ile bağımlılık enjeksiyonu, "olur mu, olmaz mı?" sorularının cevapları ve `typealias`.
 
-Uygulamada **Temeller → Protocol'ler** ekranındaki üç bölüm (Liste, Raf, Dispatch) bu dersin canlı halidir.
+Uygulamada **Mülakat** sekmesinin "Swift Temelleri" bölümündeki üç konu bu dersin canlı halidir. Her konuda **Cevap** (30 saniyelik mülakat cevabı, ek sorular, tuzaklar), **Demo** ve **Kod** (bakman gereken dosyalar) bölümleri var:
+- **"Protocol ve extension birlikte nasıl kullanılır?"** → Demo: Dispatch / Varsayılan / Koşullu ([ProtocolExtensionDemoView](../BookShelf/Features/Interview/Demos/SwiftBasics/ProtocolExtensionDemoView.swift)).
+- **"Protocol'ü tip olarak kullanmak"** → Demo: 16 soruluk quiz ([SwiftQuizView](../BookShelf/Features/Interview/Demos/SwiftBasics/SwiftQuizView.swift)); altındaki bağlantı, `[any ReadingItem]` listesini ve `Shelf<Novel>` rafını gösteren [ProtocolsView](../BookShelf/Features/Fundamentals/Protocols/ProtocolsView.swift)'u açar.
+- **"typealias nedir, nerede işe yarar?"** → Demo: [TypealiasDemoView](../BookShelf/Features/Interview/Demos/SwiftBasics/TypealiasDemoView.swift).
 
 ## Temel kavramlar
 
@@ -74,6 +77,24 @@ extension PagedReadingItem {
 }
 ```
 
+**"Optional" gereksinim yok, varsayılan uygulama var.** Saf Swift protocol'lerinde `optional` gereksinim yoktur; yalnızca `@objc` protocol'lerde `@objc optional` vardır (UIKit delegate'lerindeki isteğe bağlı metotlar böyledir). Swift'teki karşılığı varsayılan uygulamadır: Tip yazmazsa extension'daki gövde çalışır.
+
+**Extension'ların sınırları.** Extension; computed property, metot, `init`, iç içe tip ve protocol uygunluğu ekleyebilir. Şunları yapamaz (mesajlar bu projenin derleyicisinden):
+
+```swift
+extension Novel { var rating = 0 }
+// error: extensions must not contain stored properties
+// (Tipin bellek düzeni tanımında sabitlenir; başka bir dosyadaki extension onu değiştiremez.)
+
+class Base {}
+extension Base { func greet() {} }
+class Sub: Base { override func greet() {} }
+// error: non-'@objc' instance method 'greet()' is declared in extension of 'Base' and cannot be overridden
+
+extension ReadingItem: CustomStringConvertible {}
+// error: extension of protocol 'ReadingItem' cannot have an inheritance clause
+```
+
 ### 4. Gereksinim mi, extension'a özel üye mi? Dispatch tuzağı
 
 Bu, protocol'lerle ilgili en önemli ve en çok sorulan inceliktir.
@@ -99,7 +120,9 @@ item.shelfSection       // "Genel raf": derleyici sadece ReadingItem'ı biliyor
 item.symbolName         // "newspaper": gereksinim, gerçek tipe gider
 ```
 
-Generic bir fonksiyon içinde de aynısı olur: `func f(_ x: some ReadingItem) { x.shelfSection }` her zaman `"Genel raf"` döndürür. Uygulamadaki **Dispatch** bölümü bu dört durumu yan yana gösterir.
+Generic bir fonksiyon içinde de aynısı olur: `func f(_ x: some ReadingItem) { x.shelfSection }` her zaman `"Genel raf"` döndürür. "Protocol + extension" demosunun **Dispatch** bölümünde değişkenin derleme anındaki tipini (Magazine / any / some) değiştirip iki üyenin sonucunu canlı görebilirsin ([ProtocolDispatchDemo.observe(from:)](../BookShelf/Features/Fundamentals/Protocols/ProtocolExtensionExamples.swift)).
+
+Aynı tuzağın class kalıtımıyla birleşen hali için "Sık yapılan hatalar"daki 2. maddeye bak. Ve bir uyarı: Gereksinimin imzasını birebir tutturamazsan (`summary(short:)` ya da yazım hatası `summery()`), yazdığın metot ayrı bir metot olur ve gereksinimi varsayılan karşılar. Swift 6.2 bu örneklerde uyarı bile vermez.
 
 **Kural:** Tiplerin özelleştirebilmesini istediğin her şeyi **gereksinim** olarak tanımla. Extension'a özel üyeleri yalnızca kimsenin özelleştirmeyeceği yardımcılar için kullan.
 
@@ -116,7 +139,18 @@ totalReadingMinutes(of: novels)    // Item == Novel
 totalReadingMinutes(of: books)     // Item == Book
 ```
 
-Derleyici her çağrıda `Item`'ın ne olduğunu bilir; kodu o tip için özelleştirebilir (specialization). Kısıtlar extension'lara da yazılabilir; o üye yalnızca kısıt sağlandığında var olur:
+Derleyici her çağrıda `Item`'ın ne olduğunu bilir; kodu o tip için özelleştirebilir (specialization). Kısıtlar extension'lara da yazılabilir; o üye yalnızca kısıt sağlandığında var olur (*koşullu extension*). Standart kütüphane tiplerine de yazılabilir:
+
+```swift
+extension Sequence where Element: PagedReadingItem {
+    var totalPageCount: Int { reduce(0) { $0 + $1.pageCount } }
+}
+ReadingSamples.shelfNovels.totalPageCount   // 852: [Novel] sayfalı
+// [Magazine]().totalPageCount              → derlenmez: Magazine sayfalı değil
+// mixedItems.totalPageCount                → derlenmez: any ReadingItem kutusu protocol'e uymaz
+```
+
+Aynı fikir protocol'ün kendi extension'ında:
 
 ```swift
 extension Shelf where Item: Comparable {
@@ -155,7 +189,7 @@ Ama `Item` belirtilmeden `any Shelf` yazarsan `add(_:)` çağrılamaz; derleyici
 error: member 'add' cannot be used on value of type 'any Shelf'; consider using a generic constraint instead
 ```
 
-(Not: `any Shelf<Novel>` gibi kısıtlı existential'lar çalışma anı desteği ister; iOS 16 ve sonrasında kullanılabilir. Bu projenin hedefi iOS 17.)
+(Not: `any Shelf<Novel>` gibi kısıtlı existential'ların tip bilgisi çalışma anında gerektiğinde, ör. `[any Shelf<Novel>]` dizisinde ya da `as? any Shelf<Novel>` dönüşümünde, iOS 16+ çalışma anı desteği gerekir; daha eski hedeflerde derleyici "runtime support for parameterized protocol types is only available in iOS 16.0.0 or newer" hatası verir. Bu projenin hedefi iOS 17.)
 
 ### 7. `some` ve `any`
 
@@ -195,7 +229,14 @@ let boxed: any ReadingItem = magazine
 readingSummary(for: boxed)   // derlenir: kutu açılır, içindeki Magazine verilir
 ```
 
-Swift 6 dil modunda `any` kelimesini yazmak hâlâ zorunlu değildir (`let x: ReadingItem` de derlenir), ama her zaman yazmak iyi bir alışkanlıktır: Kodu okuyan, bunun bir kutu olduğunu ve bir bedeli olduğunu görür.
+`any` yazmazsan ne olur? Bu projenin derleyicisinde (Swift 6.2, Swift 6 dil modu):
+- `associatedtype` ya da `Self` gereksinimi **olmayan** bir protocol için (`let x: ReadingItem`) uyarısız derlenir.
+- Olanlar için (`let x: Equatable`, `let s: Shelf`) derlenir ama "use of protocol 'Equatable' as a type must be written 'any Equatable'" **uyarısı** verir.
+- `ExistentialAny` upcoming feature açılırsa (Xcode'da `SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES`) ilk durum için de aynı uyarı gelir. Bu derleyicide bu bir uyarı, hata değil.
+
+Uyarıların metni bunun gelecekteki bir dil modunda hata olacağını söylüyor. Her zaman `any` yaz: Kodu okuyan, bunun bir kutu olduğunu ve bir bedeli olduğunu görür. (Bu kuralların hepsi quiz'de derleyiciyle doğrulanıyor; bkz. 12. bölüm.)
+
+Kutunun boyutu: 64-bit'te `MemoryLayout<any ReadingItem>.size == 40` (3 kelimelik değer tamponu + tip bilgisi + bir witness table). Her ek protocol bir witness table daha ekler (`any P & Q` → 48); `Sendable` gibi marker protocol'ler tablo eklemez. `AnyObject`'e bağlı bir protocol'ün existential'ı 16 bayttır: referans + witness table.
 
 ### 8. Protocol birleşimi (composition)
 
@@ -264,6 +305,108 @@ Protocol'ler:
 
 Yine de ölçülü ol: **Her şey için protocol yazma.** Önce somut tipi yaz; aynı kodu birden fazla tipte tekrarladığını ya da bir bağımlılığı testte değiştirmen gerektiğini gördüğünde protocol'e çıkar.
 
+### 12. Protocol tip olarak: "Olur mu, olmaz mı?" quiz'i
+
+Mülakatlarda sık gelen bir soru biçimi: Ekrana birkaç satır kod konur ve "Bu derlenir mi?" diye sorulur. Uygulamadaki **Mülakat → "Protocol'ü tip olarak kullanmak"** konusunun Demo bölümü tam olarak bu: 16 soru, her birinde "Olur ✓" ya da "Olmaz ✗" dersin, ardından doğru cevap, derleyicinin **birebir** mesajı ve açıklama açılır.
+
+**Tek doğruluk kaynağı.** Örnekler Swift kodunun içine gömülü değil; her biri ayrı bir dosya:
+[QuizSnippets/](../BookShelf/Features/Interview/Demos/SwiftBasics/QuizSnippets/quiz-prelude.swift.txt) klasöründe `quiz-NN-ad.swift.txt`. Uygulama bu dosyaları paketten okuyup gösterir; [check-swift-quiz.sh](../scripts/check-swift-quiz.sh) ise **aynı dosyaları** ortak tanımlarla (`quiz-prelude.swift.txt`) birleştirip gerçekten derler ve beklenen sonucu doğrular. Her dosyanın başında şu başlıklar var:
+
+```
+// TITLE: İki any Equatable'ı == ile karşılaştırmak
+// EXPECT: error: binary operator '==' cannot be applied to two 'any Equatable' operands
+// EXPLAIN: == iki tarafın da AYNI somut tip (Self) olmasını ister...
+```
+
+`EXPECT` üç biçimde olabilir: `compiles` (uyarısız derlenir), `warning: <mesaj>` (derlenir ama uyarır) ve `error: <mesaj>` (derlenmez). İsteğe bağlı `FLAGS:` satırı derleyici ayarı ekler. Dosya uzantısı bilerek `.swift.txt`: `.swift` olsaydı Xcode bu dosyaları uygulamanın kaynak kodu sanıp derlemeye çalışırdı ve derlenmeyen örnekler uygulamayı da derletmezdi.
+
+```bash
+./scripts/check-swift-quiz.sh     # 16 örnek, 0 uyuşmazlık → çıkış kodu 0
+```
+
+Derleyici sürümü değişir ve bir mesaj ya da davranış farklılaşırsa betik kırmızıya döner; quiz'i güncellemen gerektiğini söyler. Aşağıdaki tablo bu projenin derleyicisiyle (Swift 6.2, Swift 6 dil modu) doğrulandı:
+
+| # | Kod (özet) | Sonuç | Neden? |
+|---|---|---|---|
+| 1 | `let items: [any ReadingItem] = [Novel(...), Magazine(...)]` | Derlenir | Heterojen koleksiyon için `any` gerekir |
+| 2 | `let value: Equatable = 42` | Derlenir, uyarı verir | Swift 5.7'den beri (SE-0309) mümkün; `any Equatable` yazılmalı ("must be written 'any Equatable'") |
+| 3 | `lhs == rhs` (ikisi de `any Equatable`) | Derlenmez | `==` iki tarafın aynı somut tip olmasını ister |
+| 4 | `Set<any Hashable>` | Derlenmez | Kutu `Hashable`'a uymaz; çözüm `Set<AnyHashable>` |
+| 5 | `-> some ReadingItem`, iki dalda farklı tip | Derlenmez | Opaque tip TEK bir somut tiptir |
+| 6 | `-> any ReadingItem`, iki dalda farklı tip | Derlenir | Kutu her tipi taşıyabilir |
+| 7 | `describe(boxed)` (`<T: ReadingItem>(_: T)`, `boxed: any ReadingItem`) | Derlenir | Tek değerde kutu otomatik açılır (SE-0352) |
+| 8 | `describeAll(items)` (`<T>(_: [T])`, `items: [any ReadingItem]`) | Derlenmez | "type 'any ReadingItem' cannot conform to 'ReadingItem'" |
+| 9 | `printSummary(_ item: some ReadingItem)` iki farklı tiple | Derlenir | Parametrede `some` = generic (SE-0341); tipi çağıran seçer |
+| 10 | `let shelf: Shelf = NovelShelf()` (associatedtype'lı) | Derlenir, uyarı verir | 5.6 ve öncesinde hataydı; artık `any Shelf` yazılmalı |
+| 11 | `shelf.add(...)` (`shelf: any Shelf`) | Derlenmez | `Item` bilinmiyor; Item ALAN üye çağrılamaz |
+| 12 | `shelf.add(...)` (`shelf: any Shelf<Novel>`) | Derlenir | Primary associated type ile `Item` sabitlendi (SE-0346, SE-0353) |
+| 13 | `ReadingItem.kindName` (static gereksinim) | Derlenmez | Protocol'ün kendisinin uygulaması yok; `type(of: item).kindName` çalışır |
+| 14 | `let item: ReadingItem = Novel(...)` | Derlenir (uyarısız) | associatedtype/Self gereksinimi olmayan protocol'de `any` henüz zorunlu değil |
+| 15 | Aynı satır, `-enable-upcoming-feature ExistentialAny` ile | Derlenir, uyarı verir | Bu derleyicide ExistentialAny **uyarı** üretir, hata değil |
+| 16 | `extension Novel { var rating: Int = 0 }` | Derlenmez | "extensions must not contain stored properties" |
+
+İki not:
+- 2, 10 ve 15'teki uyarıların metni "this will be an error in a future Swift language mode" der: Bugün derlenir, ama `any` yazmayı alışkanlık edin.
+- Mülakatçı "associatedtype'lı protocol tip olarak kullanılamaz" cevabını bekliyor olabilir. Doğru ve güncel cevap: "Swift 5.6'ya kadar öyleydi. 5.7'den beri `any Shelf` yazılabiliyor; kısıt, `Item` alan üyeleri çağıramamak. `any Shelf<Novel>` ile o da çözülüyor."
+
+### 13. typealias
+
+`typealias` var olan bir tipe **ikinci bir isim** verir. Yeni bir tip **oluşturmaz**: Derleyici için `BookID` ile `Int` birebir aynı tiptir ve çalışma anında alias hiç yoktur (`String(describing: BookID.self)` → `"Int"`). Örneklerin hepsi [TypealiasExamples.swift](../BookShelf/Features/Fundamentals/Typealias/TypealiasExamples.swift) içinde; uygulamada **Mülakat → "typealias nedir?"** konusunun Demo bölümünde.
+
+**Nerede işe yarar?**
+
+```swift
+// 1. Closure tipine isim: hem kısalır hem ne işe yaradığını anlatır.
+typealias BookFilter = @Sendable (Book) -> Bool
+
+// 2. Protocol birleşimine isim. Apple'ın kendi tanımı da budur:
+//    public typealias Codable = Decodable & Encodable
+typealias ShelfItem = ReadingItem & Identifiable
+func identifiers<Item: ShelfItem>(of items: [Item]) -> [Item.ID] { items.map(\.id) }
+
+// 3. Generic alias
+typealias BookMap<Value> = [Book.ID: Value]      // BookMap<Int> == [Int: Int]
+
+// 4. Uzun generic tipi kısaltmak (FavoritesViewController)
+typealias Snapshot = NSDiffableDataSourceSnapshot<Section, Book>
+typealias DataSource = UITableViewDiffableDataSource<Section, Book>
+
+// 5. associatedtype'ı açıkça karşılamak
+struct ClassicsShelf: Shelf {
+    typealias Item = Novel          // çoğu zaman gerekmez: add(_ item: Novel)'dan çıkarılır
+    ...
+}
+
+// 6. Dosya içi kısaltma (StructVsClassView)
+private typealias ID = AccessibilityID.Fundamentals.StructVsClass
+```
+
+**Tuzak: yeni bir tip değil.** İki alias aynı tipe gidiyorsa birbirinin yerine geçer ve derleyici uyarmaz:
+
+```swift
+typealias BookID = Int
+typealias MemberID = Int
+
+let member: MemberID = 42
+let book: BookID = member        // derlenir ve sessizce yanlış
+```
+
+Bir alias'a extension yazmak da aslında alttaki tipi genişletir: `extension BookID { var isEvenID: Bool { ... } }` yazdıktan sonra `7.isEvenID` de derlenir.
+
+Tip güvenliği gerekiyorsa tek alanlı bir **sarmalayıcı struct** yaz. Ayrı bir tiptir; karıştırmak derleme hatasıdır ve bellekte içindeki `Int` kadar (8 bayt) yer kaplar:
+
+```swift
+struct LibraryCardNumber: RawRepresentable, Hashable, Sendable {
+    let rawValue: Int
+}
+
+func cardLabel(for number: LibraryCardNumber) -> String { ... }
+cardLabel(for: 42)
+// error: cannot convert value of type 'Int' to expected argument type 'LibraryCardNumber'
+```
+
+Erişim seviyesi kuralı: Bir alias, gösterdiği tipten daha açık olamaz. `internal` bir tipe `public typealias` yazmak "type alias cannot be declared public because its underlying type uses an internal type" hatasıdır.
+
 ## Bu projede nerede?
 
 | Dosya | Tip / fonksiyon | Ne gösteriyor? |
@@ -275,12 +418,21 @@ Yine de ölçülü ol: **Her şey için protocol yazma.** Önce somut tipi yaz; 
 | [ReadingItemTypes.swift](../BookShelf/Features/Fundamentals/Protocols/ReadingItemTypes.swift) | `extension Book: PagedReadingItem` | Var olan bir tipe sonradan uygunluk |
 | [ReadingItemTypes.swift](../BookShelf/Features/Fundamentals/Protocols/ReadingItemTypes.swift) | `ReadingSamples.mixedItems`, `ReadingSamples.featuredItem()`, `ReadingSortOrder.sorted(_:)` | `[any ReadingItem]`, opaque dönüş tipi, heterojen sıralama |
 | [Shelf.swift](../BookShelf/Features/Fundamentals/Protocols/Shelf.swift) | `Shelf`, `ReadingShelf`, `Shelf.sortedItems` | `associatedtype`, primary associated type, protocol birleşimi, koşullu extension |
-| [ProtocolsView.swift](../BookShelf/Features/Fundamentals/Protocols/ProtocolsView.swift) | `ProtocolsView` | Karışık liste, raf ve dispatch ekranı |
+| [ProtocolExtensionExamples.swift](../BookShelf/Features/Fundamentals/Protocols/ProtocolExtensionExamples.swift) | `ProtocolDispatchDemo.observe(from:)`, `ProtocolDefaultsDemo`, `Sequence.totalPageCount` | Etkileşimli dispatch, varsayılanların kaynağı, koşullu extension |
+| [ProtocolExtensionDemoView.swift](../BookShelf/Features/Interview/Demos/SwiftBasics/ProtocolExtensionDemoView.swift) | `ProtocolExtensionDemoView` | "Protocol + extension" demosu; extension'ın ekleyemediği şeyler ve derleyici mesajları |
+| [ProtocolsView.swift](../BookShelf/Features/Fundamentals/Protocols/ProtocolsView.swift) | `ProtocolsView` | Karışık liste (`[any ReadingItem]`) ve raf (`Shelf<Novel>`) ekranı |
+| [QuizSnippets/](../BookShelf/Features/Interview/Demos/SwiftBasics/QuizSnippets/quiz-prelude.swift.txt) | `quiz-prelude.swift.txt`, `quiz-NN-*.swift.txt` | Quiz örnekleri: uygulamanın gösterdiği ve betiğin derlediği tek kaynak |
+| [check-swift-quiz.sh](../scripts/check-swift-quiz.sh) | `typecheck` | Her örneği gerçekten derleyip beklenen sonucu ve mesajı doğrular |
+| [SwiftQuizSnippet.swift](../BookShelf/Features/Interview/Demos/SwiftBasics/SwiftQuizSnippet.swift), [SwiftQuizSession.swift](../BookShelf/Features/Interview/Demos/SwiftBasics/SwiftQuizSession.swift) | `SwiftQuizParser`, `SwiftQuizLibrary`, `SwiftQuizSession` | Dosya biçimi, paketten okuma, skor mantığı |
+| [TypealiasExamples.swift](../BookShelf/Features/Fundamentals/Typealias/TypealiasExamples.swift) | `TypealiasExamples` | Closure, birleşim ve generic alias'lar; `BookID`/`MemberID` tuzağı; `LibraryCardNumber` sarmalayıcısı |
+| [FavoritesViewController.swift](../BookShelf/Features/Favorites/FavoritesViewController.swift) | `FavoritesViewController.Snapshot`, `DataSource` | Gerçek kodda uzun generic tipleri kısaltan typealias'lar |
 | [BookServiceProtocol.swift](../BookShelf/Core/Services/BookServiceProtocol.swift) | `BookServiceProtocol` | Protocol ile bağımlılık enjeksiyonu |
 | [AppDependencies.swift](../BookShelf/App/AppDependencies.swift) | `AppDependencies.makeForLaunch(arguments:)` | Somut servisin seçildiği tek yer |
 | [StubBookService.swift](../BookShelfTests/Support/StubBookService.swift) | `StubBookService` | Test dublörü: aynı protocol'e uyan sahte servis |
 | [Book.swift](../BookShelf/Core/Models/Book.swift) | `Book` | `Identifiable`, `Hashable`, `Codable`, `Sendable` |
 | [FundamentalsProtocolTests.swift](../BookShelfTests/Fundamentals/FundamentalsProtocolTests.swift), [FundamentalsShelfTests.swift](../BookShelfTests/Fundamentals/FundamentalsShelfTests.swift) | `FundamentalsProtocolTests`, `FundamentalsShelfTests` | Varsayılanlar, dispatch, generic toplam, sıralama, raf davranışı |
+| [FundamentalsProtocolExtensionTests.swift](../BookShelfTests/Fundamentals/FundamentalsProtocolExtensionTests.swift), [FundamentalsSwiftQuizTests.swift](../BookShelfTests/Fundamentals/FundamentalsSwiftQuizTests.swift), [FundamentalsTypealiasTests.swift](../BookShelfTests/Fundamentals/FundamentalsTypealiasTests.swift) | `FundamentalsProtocolExtensionTests`, `FundamentalsSwiftQuizTests`, `FundamentalsTypealiasTests` | Dispatch bakış açıları, quiz dosyaları ve skor, typealias'ın aynı tip olması |
+| [SwiftBasicsUITests.swift](../BookShelfUITests/SwiftBasicsUITests.swift) | `SwiftBasicsUITests` | Quiz, dispatch ve typealias demolarının UI testleri |
 
 ## Sık yapılan hatalar
 
@@ -360,6 +512,19 @@ static func < (lhs: Novel, rhs: Novel) -> Bool {
 
 (Projedeki `Novel` metinleri Türkçe alfabe kurallarıyla karşılaştırmak için `TurkishCollation` kullanır; tuple karşılaştırması ise fikri kısaca gösteriyor.)
 
+**7. typealias'ı yeni bir tip sanmak.**
+
+```swift
+// YANLIŞ: İki "farklı" kimlik aslında aynı tip; karıştırınca derleyici uyarmaz.
+typealias BookID = Int
+typealias MemberID = Int
+func loadBook(id: BookID) { ... }
+loadBook(id: member.id)          // derlenir!
+
+// DOĞRU: Ayrı bir tip istiyorsan sarmalayıcı struct yaz.
+struct BookID: Hashable { let rawValue: Int }
+```
+
 ## Mülakatta sorulabilecekler
 
 **1. Protocol extension'daki bir metot ile protocol gereksinimi arasındaki fark nedir?**
@@ -386,6 +551,18 @@ Bir tipe, tanımlandığı yerin dışında bir extension ile protocol uygunluğ
 **8. `any P` bir değeri `some P` bekleyen fonksiyona verilebilir mi?**
 Tek bir değer olarak evet: Swift 5.7'den beri existential otomatik açılır. Ama `[any P]` dizisi `[some P]` ya da `[T] where T: P` bekleyen fonksiyona verilemez; kutunun kendisi protocol'e uymaz.
 
+**9. İki `any Equatable`'ı neden `==` ile karşılaştıramazsın?**
+`==` iki tarafın aynı somut tip (`Self`) olmasını ister; iki kutunun içinde farklı tipler olabilir. Derleyici: "binary operator '==' cannot be applied to two 'any Equatable' operands". Çözüm aynı tipi zorunlu kılan generic bir fonksiyon: `func isSame<T: Equatable>(_ a: T, _ b: T) -> Bool`. Heterojen bir kümeye ihtiyaç varsa `AnyHashable`.
+
+**10. `let x: Equatable = 42` derlenir mi?**
+Swift 5.6 ve öncesinde derlenmezdi ("yalnızca generic kısıt olarak kullanılabilir"). Swift 5.7'den beri (SE-0309) her protocol existential olabilir; bu projenin derleyicisi (Swift 6.2) satırı derler ama `any Equatable` yazılmasını isteyen bir uyarı verir. Kutu ise pek işe yaramaz: `==` bile çağrılamaz.
+
+**11. typealias yeni bir tip oluşturur mu?**
+Hayır; var olan tipe ikinci bir isim verir. `typealias BookID = Int` ile `typealias MemberID = Int` birbirinin yerine geçer ve derleyici uyarmaz; alias'a yazılan extension da aslında `Int`'i genişletir. Tip güvenliği için tek alanlı sarmalayıcı struct yazılır.
+
+**12. typealias ile associatedtype farkı nedir?**
+`associatedtype` protocol içindeki bir yer tutucudur; gerçek tipi uyan tip belirler. `typealias` her zaman belli bir tipe takma addır. Uyan tipin içindeki `typealias Item = Novel`, associatedtype'ı açıkça karşılamanın yoludur; çoğu zaman derleyici bunu imzalardan kendisi çıkarır.
+
 ## Alıştırmalar
 
 **1. `shelfSection`'ı gereksinim yap ve farkı gör.**
@@ -399,3 +576,11 @@ Tek bir değer olarak evet: Swift 5.7'den beri existential otomatik açılır. A
 **3. Bir dekoratör servis yaz.**
 `BookServiceProtocol`'e uyan ve başka bir servisi saran bir `CountingBookService` yaz: Her `fetchBooks()` çağrısını sayıp asıl servise iletsin. `StubBookService` ile sarıp çağrı sayısını test et.
 *İpucu:* Protocol'ün metotları `mutating` olmadığı için bir struct kendi `var` sayacını bu metotların içinde artıramaz; sıradan bir class ise değiştirilebilir alanı yüzünden `Sendable` olamaz. Ya tipi bir `actor` yap (`StubBookService` gibi) ya da sayacı ayrı bir actor'de tutan bir struct yaz. Sarılan servis `let wrapped: any BookServiceProtocol` olabilir.
+
+**4. Quiz'e yeni bir soru ekle.**
+`QuizSnippets/` klasörüne `quiz-17-...swift.txt` adında bir dosya ekle: `weak var delegate: ReadingItem?` (protocol class'a bağlı değilken `weak` kullanmak). Önce cevabı tahmin et, `EXPECT` satırını yaz ve `./scripts/check-swift-quiz.sh` çalıştır. Sonra `FundamentalsSwiftQuizTests`'teki soru sayısını güncelle.
+*İpucu:* Bu satır derlenmez: `weak` yalnızca class'lara uygulanabilir, `ReadingItem`'a ise struct'lar da uyabilir. Mesajı betiğin çıktısından kopyala; tahmin etme. Düzeltmesi `protocol ReadingItem: AnyObject`.
+
+**5. typealias'ı sarmalayıcı struct'a çevir.**
+`TypealiasExamples.BookID`'yi `struct BookID: Hashable, Sendable { let rawValue: Int }` yap. Derleyicinin hangi satırlarda hata verdiğine bak (`bookID(mistakenlyFrom:)` artık derlenmeyecek) ve testleri yeni davranışa göre güncelle.
+*İpucu:* Hatalar, typealias'ın gizlediği karışıklıkların tam listesidir. `ExpressibleByIntegerLiteral`'a uyarsan `let id: BookID = 42` yazmaya devam edebilirsin; ama o zaman "42 hangi tip?" sorusu yine bulanıklaşır. Bu bir tasarım kararı.

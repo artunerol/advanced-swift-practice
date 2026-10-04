@@ -1,0 +1,397 @@
+# .github/workflows/release.yml — Kitaplık (BookShelf) için sürekli teslimat (Continuous Delivery, CD).
+#
+# CI (ci.yml) "bu commit sağlıklı mı?" sorusunu cevaplar. CD ise "sağlıklı commit'ten dağıtılabilir bir paket
+# üret ve test kullanıcılarına ulaştır" işini yapar. Bu workflow üç işten oluşur:
+#
+#   1. archive        (her zaman, secrets GEREKMEZ)  Sürüm numaralarını ayarlar, İMZASIZ Release arşivi üretir,
+#                                                    artifact olarak yükler; etiket (tag) push'unda GitHub Release açar.
+#   2. signing-check  (ucuz Linux makinesi)          İmzalama secrets'ı tanımlı mı? Değerlere değil varlığa bakar.
+#   3. testflight     (ŞABLON, secrets varsa)        Geçici keychain + sertifika + profil → imzalı arşiv →
+#                                                    xcodebuild -exportArchive ile App Store Connect'e yükleme.
+#
+# Dürüst not: "testflight" işi gerçek bir Apple Developer hesabı ve secrets ile HİÇ çalıştırılmadı (bu depoda yok).
+# Komutlar ve bayraklar Xcode 26'nın `xcodebuild -help` çıktısıyla doğrulandı; yapı GitHub'ın resmî "Installing an
+# Apple certificate on macOS runners" rehberini izler. 1. iş ise lokalde (`./scripts/ci.sh archive`) çalıştırıldı.
+#
+# Bu workflow testleri yeniden koşmaz. Etiketi yalnızca CI'dan geçmiş bir main commit'ine koy. Daha sıkı bir kurulumda
+# ci.yml'ye `on: workflow_call` eklenir ve burada `needs:` ile arşivden önce çağrılır (bkz. docs/11-ci.md).
+
+name: Release
+
+on:
+  # "v" ile başlayan bir etiket push'landığında: git tag v1.2.0 && git push origin v1.2.0
+  push:
+    tags: ['v*']
+  # Actions → Release → "Run workflow". Etiket olmadan da arşiv üretip denemek için.
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: "Sürüm (CFBundleShortVersionString), ör. 1.2.0. Boş bırakılırsa projedeki MARKETING_VERSION kullanılır."
+        required: false
+        default: ''
+
+# Aynı etiket/dal için iki sürüm işi aynı anda koşmasın. ci.yml'nin aksine yarıdakini İPTAL ETMİYORUZ:
+# yarıda kesilmiş bir yükleme, beklemekten daha kötüdür.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Varsayılan: sadece okuma. Yazma yetkisini yalnızca ihtiyacı olan işe (archive → GitHub Release) veriyoruz.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ---------------------------------------------------------------------------------------------------------------
+  # 1. İmzasız arşiv + artifact + GitHub Release
+  # ---------------------------------------------------------------------------------------------------------------
+  archive:
+    name: Arşivle (imzasız)
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      # `gh release create` bir release ve dosya oluşturur; bunun için depoya yazma yetkisi gerekir.
+      contents: write
+    # İş çıktıları (job outputs): testflight işi AYNI sürüm ve build numarasını kullansın.
+    outputs:
+      marketing_version: ${{ steps.archive.outputs.marketing_version }}
+      build_number: ${{ steps.archive.outputs.build_number }}
+    steps:
+      - name: Kodu indir
+        uses: actions/checkout@v7
+
+      - name: Xcode'u seç
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # Sürüm (marketing version) etiketten gelir: v1.2.0 → 1.2.0. Elle çalıştırmada formdaki değer kullanılır.
+      # Güvenlik: Kullanıcı girdisini `${{ inputs.... }}` diye DOĞRUDAN run: betiğine yazmıyoruz. GitHub ifadeyi betik
+      # çalışmadan önce metin olarak yerleştirir; girdi `"; rm -rf ~; "` gibi bir şeyse kabuk onu kod olarak çalıştırır
+      # (script injection). env üzerinden verilen değer ise sadece bir değişkendir. Biçim kontrolünü ci.sh yapar.
+      - name: Sürüm numaralarını belirle
+        id: version
+        env:
+          INPUT_MARKETING_VERSION: ${{ inputs.marketing_version }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            marketing_version="${GITHUB_REF_NAME#v}"
+          else
+            marketing_version="$INPUT_MARKETING_VERSION"
+          fi
+          echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
+          echo "Sürüm: ${marketing_version:-<projedeki değer>} · build numarası: $GITHUB_RUN_NUMBER"
+
+      # Build numarası = github.run_number: Bu workflow'un her çalıştırmasında 1 artar, tekrar denemede (re-run)
+      # DEĞİŞMEZ. App Store Connect aynı sürüm için aynı build numarasını ikinci kez kabul etmediği için artan bir sayı
+      # şart. ci.sh sayıyı CURRENT_PROJECT_VERSION, sürümü MARKETING_VERSION ayarını ezerek (override) Info.plist'e
+      # yazdırır, sonra arşivdeki değerleri okuyup doğrular ve adım çıktısı ($GITHUB_OUTPUT) olarak verir.
+      - name: Arşivle (xcodebuild archive, CODE_SIGNING_ALLOWED=NO)
+        id: archive
+        timeout-minutes: 20
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          MARKETING_VERSION: ${{ steps.version.outputs.marketing_version }}
+        run: ./scripts/ci.sh archive
+
+      # archive: false → zip'i olduğu gibi yükle (zaten zip; ikinci kez sıkıştırmanın anlamı yok).
+      # Bu modda artifact'ın adı dosyanın adıdır, ör. BookShelf-1.2.0-42.xcarchive.zip.
+      # overwrite: true → "Re-run"da aynı adlı artifact'ı değiştir (build numarası re-run'da değişmez, ad aynı kalır).
+      - name: Arşivi artifact olarak yükle
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.archive.outputs.zip_path }}
+          archive: false
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 30
+
+      # Sadece etiket push'unda. `gh` (GitHub CLI) runner'da kuruludur; GH_TOKEN ile kimlik doğrular.
+      # --verify-tag: etiket yoksa yeni etiket OLUŞTURMA, dur. --generate-notes: son sürümden bu yana PR/commit listesi.
+      # Re-run'da release zaten vardır; o zaman sadece dosyayı değiştiriyoruz. Adım iki kez çalışsa da aynı sonucu
+      # verir (idempotent). (Depoda "immutable releases" açıksa yayımlanmış release'in dosyası değiştirilemez.)
+      - name: GitHub Release oluştur
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ZIP_PATH: ${{ steps.archive.outputs.zip_path }}
+          MARKETING_VERSION: ${{ steps.archive.outputs.marketing_version }}
+          BUILD_NUMBER: ${{ steps.archive.outputs.build_number }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$ZIP_PATH" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$ZIP_PATH" \
+              --verify-tag \
+              --title "Kitaplık $MARKETING_VERSION (build $BUILD_NUMBER)" \
+              --notes "İmzasız Release arşivi (CODE_SIGNING_ALLOWED=NO): cihaza kurulamaz, App Store'a yüklenemez. Release derlemesinin ve sürüm numaralarının kanıtıdır; dSYM'leri içerir." \
+              --generate-notes
+          fi
+
+      - name: Özet
+        env:
+          ZIP_PATH: ${{ steps.archive.outputs.zip_path }}
+          MARKETING_VERSION: ${{ steps.archive.outputs.marketing_version }}
+          BUILD_NUMBER: ${{ steps.archive.outputs.build_number }}
+        run: |
+          {
+            echo "### Arşiv"
+            echo "| Sürüm | Build | Dosya | İmza |"
+            echo "|---|---|---|---|"
+            echo "| $MARKETING_VERSION | $BUILD_NUMBER | \`$(basename "$ZIP_PATH")\` | yok (CODE_SIGNING_ALLOWED=NO) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # 2. İmzalama secrets'ı var mı?
+  # ---------------------------------------------------------------------------------------------------------------
+  # Neden ayrı bir iş? İşin kendi `if:` koşulu `secrets` bağlamını OKUYAMAZ (GitHub kuralı; iş düzeyinde sadece
+  # github, needs, vars ve inputs kullanılabilir). Çözüm: Secrets'ı bir adıma env olarak ver, adım "var/yok" bilgisini
+  # çıktı olarak yazsın; testflight işi `needs` üzerinden bu çıktıya baksın.
+  # Neden ubuntu? Kontrol için macOS gerekmez; Linux dakikaları macOS'tan çok daha ucuzdur. testflight işi atlanırsa
+  # hiç macOS makinesi açılmaz.
+  signing-check:
+    name: İmzalama secrets'ı tanımlı mı?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      # Değerleri ASLA yazdırmıyoruz; sadece boş olup olmadıklarına bakıyoruz. (GitHub secrets'ı loglarda maskeler
+      # ama base64'ten çözülmüş hali gibi türetilmiş değerleri maskeleyemez. Hiç yazdırmamak en güvenlisi.)
+      - name: Secrets'ı kontrol et
+        id: check
+        env:
+          IOS_DIST_CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_APPSTORE_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+        run: |
+          missing=""
+          for name in IOS_DIST_CERT_P12_BASE64 IOS_DIST_CERT_PASSWORD IOS_APPSTORE_PROFILE_BASE64 \
+                      APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64; do
+            # ${!name}: adı $name içinde olan değişkenin değeri (dolaylı genişletme, indirect expansion).
+            if [[ -z "${!name}" ]]; then
+              missing="$missing $name"
+            fi
+          done
+          if [[ -n "$missing" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=TestFlight atlandı::Eksik secrets:$missing"
+            {
+              echo "### TestFlight işi atlandı"
+              echo "Eksik secrets:$missing"
+              echo ""
+              echo "Kurulum adımları: docs/11-ci.md → \"CD: release.yml\" bölümü."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # 3. TestFlight (ŞABLON): imzalı arşiv + App Store Connect'e yükleme
+  # ---------------------------------------------------------------------------------------------------------------
+  # Gereken secrets (Settings → Secrets and variables → Actions):
+  #   IOS_DIST_CERT_P12_BASE64     "Apple Distribution" sertifikası + özel anahtarı, .p12 olarak dışa aktarılıp base64'lenmiş
+  #                                (base64 -i dist.p12 | pbcopy)
+  #   IOS_DIST_CERT_PASSWORD       .p12'yi dışa aktarırken verilen parola
+  #   IOS_APPSTORE_PROFILE_BASE64  Uygulamanın App Store provisioning profile'ı (.mobileprovision), base64
+  #   APPLE_TEAM_ID                10 karakterlik takım kimliği (gizli değil; istersen "vars" içine de koyabilirsin)
+  #   ASC_KEY_ID, ASC_ISSUER_ID    App Store Connect API anahtarının kimliği ve "issuer" kimliği (Users and Access → Integrations)
+  #   ASC_PRIVATE_KEY_BASE64       API anahtarının .p8 dosyası, base64 (Apple bu dosyayı yalnızca BİR kez indirtir)
+  #
+  # Alternatifler (aynı işi yapan araçlar):
+  #   - fastlane: match (sertifika/profilleri şifreli bir depoda paylaşır, CI'da `match readonly`), gym (= xcodebuild
+  #     archive + export), pilot / upload_to_testflight (yükleme). Aşağıdaki ~40 satır birkaç satırlık Fastfile olur.
+  #   - Xcode Cloud: Apple'ın CI/CD'si. İmzalamayı (bulut imzalama) ve TestFlight dağıtımını kendisi yönetir;
+  #     sertifika/profil secrets'ı tutmak gerekmez.
+  #   - Onay kapısı: İşe `environment: testflight` ekleyip GitHub'da o ortama "required reviewers" tanımlarsan,
+  #     iş bir insan onaylayana kadar bekler. (O zaman secrets'ı da ortama taşırsan signing-check işine de aynı
+  #     `environment:` satırı gerekir; ortam secrets'ı sadece o ortamı kullanan işlere görünür.)
+  testflight:
+    name: TestFlight'a yükle (şablon)
+    needs: [archive, signing-check]
+    if: needs.signing-check.outputs.enabled == 'true'
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      # Bilgi amaçlı sabitler. İş düzeyindeki env'de `runner` bağlamı kullanılamaz; geçici dosya yollarını bu yüzden
+      # ilk adımda $RUNNER_TEMP'ten üretip $GITHUB_ENV'e yazıyoruz.
+      BUNDLE_ID: dev.learning.BookShelf
+      SIGNED_ARCHIVE_PATH: build/signed/BookShelf.xcarchive
+      EXPORT_PATH: build/export
+    steps:
+      - name: Kodu indir
+        uses: actions/checkout@v7
+
+      - name: Xcode'u seç
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # Geçici keychain: Sertifikanın ÖZEL ANAHTARI bu dosyada durur. Parolası rastgele ve sadece bu iş boyunca var.
+      # - set-keychain-settings -lut 21600: 6 saat (21600 sn) sonra kilitlen; uyku/kilitlenme yok (-l, -u).
+      # - import -A: Her uygulama anahtara sorusuz erişebilir. Her iş için sıfırdan açılan bir runner'da kabul
+      #   edilebilir; paylaşılan (self-hosted) bir makinede yerine `-T /usr/bin/codesign` kullan.
+      # - set-key-partition-list: codesign'ın anahtarı kullanırken arayüz (parola penceresi) açmasını engeller.
+      #   CI'da pencereye tıklayacak kimse yok; bu satır olmazsa imzalama asılı kalır.
+      # - list-keychains -s: Kullanıcının keychain arama listesini bu keychain yapar; xcodebuild/codesign sertifikayı bulsun.
+      # Secrets'ı SADECE bu adıma veriyoruz (iş düzeyindeki env'e değil): checkout gibi başka action'lar görmesin.
+      - name: Geçici keychain oluştur ve dağıtım sertifikasını içe aktar
+        env:
+          P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+        run: |
+          keychain_path="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo "::add-mask::$keychain_password"
+          echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+
+          cert_path="$RUNNER_TEMP/dist.p12"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$cert_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$cert_path" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain_path" >/dev/null
+          security list-keychains -d user -s "$keychain_path"
+          rm -f "$cert_path"
+
+          # Kontrol: imzalamaya uygun kimlik (sertifika + özel anahtar) görünüyor mu?
+          security find-identity -v -p codesigning "$keychain_path"
+
+      # Provisioning profile, Apple'ın imzaladığı bir CMS (PKCS#7) zarfının içindeki plist'tir: hangi uygulama (App ID),
+      # hangi takım, hangi sertifika(lar), (geliştirme profillerinde) hangi cihazlar ve hangi yetkiler (entitlements).
+      # Adını ve UUID'sini zarfı açıp okuyoruz; Xcode 16 ve sonrası profilleri aşağıdaki klasörde arar
+      # (Xcode 15 ve öncesi: ~/Library/MobileDevice/Provisioning Profiles).
+      - name: Provisioning profile'ı yükle
+        id: profile
+        env:
+          PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROFILE_BASE64 }}
+        run: |
+          profile_path="$RUNNER_TEMP/appstore.mobileprovision"
+          printf '%s' "$PROFILE_BASE64" | base64 --decode > "$profile_path"
+          security cms -D -i "$profile_path" > "$RUNNER_TEMP/profile.plist"
+          uuid="$(plutil -extract UUID raw -o - "$RUNNER_TEMP/profile.plist")"
+          name="$(plutil -extract Name raw -o - "$RUNNER_TEMP/profile.plist")"
+
+          profiles_dir="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          mkdir -p "$profiles_dir"
+          cp "$profile_path" "$profiles_dir/$uuid.mobileprovision"
+
+          echo "uuid=$uuid" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Profil yüklendi: $name ($uuid)"
+
+      # Manuel imzalama ile arşiv. Komut satırındaki ayarlar bu derlemedeki TÜM hedeflere uygulanır. Uygulamada
+      # eklenti (widget, share extension) olsaydı her birinin kendi profili gerekirdi; o zaman bu ayarlar hedef başına
+      # projede ya da bir .xcconfig dosyasında tutulur. Sürüm/build numarası 1. işle AYNI (needs.archive.outputs).
+      - name: İmzalı arşiv (manuel imzalama)
+        timeout-minutes: 20
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_NAME: ${{ steps.profile.outputs.name }}
+          BUILD_NUMBER: ${{ needs.archive.outputs.build_number }}
+          MARKETING_VERSION: ${{ needs.archive.outputs.marketing_version }}
+        run: |
+          xcodebuild archive \
+            -project BookShelf.xcodeproj \
+            -scheme BookShelf \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$SIGNED_ARCHIVE_PATH" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
+            | xcbeautify --renderer github-actions
+
+      # Dışa aktarma (export) arşivdeki uygulamayı dağıtım yöntemine göre yeniden imzalayıp paketler (.ipa).
+      # ExportOptions.plist'teki anahtarlar `xcodebuild -help` çıktısında listelenir:
+      #   method = app-store-connect   App Store / TestFlight dağıtımı (eski adı: app-store)
+      #   destination = upload         Paketi diske bırakmak yerine doğrudan App Store Connect'e yükle
+      #   manageAppVersionAndBuildNumber = false  Build numarasını Xcode değil BİZ yönetiyoruz (varsayılan YES:
+      #                                Xcode yüklerken numarayı değiştirebilir; o zaman CI çalıştırmasıyla eşleşmez)
+      #   uploadSymbols = true         dSYM'leri de gönder: App Store Connect'teki çökme raporları sembolize olsun
+      # Kimlik doğrulama: App Store Connect API anahtarı (.p8). Apple ID + parola + iki adımlı doğrulama CI'da
+      # kullanılamaz; API anahtarı bunun için var. -allowProvisioningUpdates xcodebuild'in Apple'ın sunucularıyla
+      # konuşmasına izin verir; kimliği -authenticationKey... bayrakları verir.
+      # Alternatif yükleme: destination=export ile .ipa üret, sonra
+      #   xcrun altool --upload-app -f build/export/BookShelf.ipa -t ios --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID" --p8-file-path "$key_path"
+      - name: Dışa aktar ve App Store Connect'e yükle (xcodebuild -exportArchive)
+        timeout-minutes: 20
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_NAME: ${{ steps.profile.outputs.name }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+        run: |
+          key_path="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s' "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > "$key_path"
+
+          export_options="$RUNNER_TEMP/ExportOptions.plist"
+          cat > "$export_options" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store-connect</string>
+              <key>destination</key>
+              <string>upload</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>teamID</key>
+              <string>$TEAM_ID</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$BUNDLE_ID</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
+              <key>manageAppVersionAndBuildNumber</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint "$export_options"
+
+          xcodebuild -exportArchive \
+            -archivePath "$SIGNED_ARCHIVE_PATH" \
+            -exportOptionsPlist "$export_options" \
+            -exportPath "$EXPORT_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$key_path" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | xcbeautify --renderer github-actions
+
+      # GitHub'ın runner'ı iş bitince zaten silinir; ama self-hosted bir makinede sertifika, anahtar ve profil
+      # diskte KALIRDI. Temizliği alışkanlık haline getiriyoruz. if: always() → önceki adımlar başarısız olsa bile.
+      - name: Keychain ve gizli dosyaları temizle
+        if: always()
+        env:
+          PROFILE_UUID: ${{ steps.profile.outputs.uuid }}
+        run: |
+          if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+          if [[ -n "$PROFILE_UUID" ]]; then
+            rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          fi
+          rm -f "$RUNNER_TEMP"/dist.p12 "$RUNNER_TEMP"/AuthKey_*.p8 "$RUNNER_TEMP"/appstore.mobileprovision \
+                "$RUNNER_TEMP"/profile.plist "$RUNNER_TEMP"/ExportOptions.plist

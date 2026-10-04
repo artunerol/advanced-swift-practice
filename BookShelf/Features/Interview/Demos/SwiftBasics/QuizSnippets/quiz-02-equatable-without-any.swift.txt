@@ -1,0 +1,6 @@
+// TITLE: Equatable'ı doğrudan tip olarak yazmak
+// EXPECT: warning: use of protocol 'Equatable' as a type must be written 'any Equatable'; this will be an error in a future Swift language mode
+// EXPLAIN: Eski klasik cevap "olmaz"dı: Swift 5.6 ve öncesinde Self gereksinimi olan Equatable yalnızca generic kısıt olarak kullanılabiliyordu. Swift 5.7 (SE-0309) bu sınırı kaldırdı; artık any Equatable diye bir existential var.
+// EXPLAIN: Bu projenin derleyicisi (Swift 6.2, Swift 6 dil modu) satırı derler ama any yazmanı isteyen bir uyarı verir; uyarı, gelecekteki bir dil modunda bunun hata olacağını söylüyor. Doğrusu: let value: any Equatable = 42. Yine de bu kutuyla yapabileceğin çok az şey var: == bile kullanılamaz (sonraki soru).
+
+let value: Equatable = 42

@@ -2,29 +2,52 @@ import SwiftUI
 
 /// "Laboratuvar" sekmesi: Swift Concurrency'yi dokunarak deneyebileceğin küçük deneyler.
 ///
+/// Sekme yalnızca bir gezinme yığını (`NavigationStack`) ve başlık ekler; deneylerin kendisi `ConcurrencyLabForm`'da.
+/// Aynı form Mülakat sekmesindeki "Swift Concurrency" konusunun demosunda da kullanılıyor. O ekran zaten bir
+/// `NavigationStack`'in içinde olduğu için formu ikinci bir yığına sarmadan oraya koyabilmemiz gerekiyordu.
+struct ConcurrencyLabView: View {
+    var body: some View {
+        NavigationStack {
+            ConcurrencyLabForm()
+                .navigationTitle("Laboratuvar")
+        }
+    }
+}
+
+/// Laboratuvar deneyleri: kendi `NavigationStack`'i OLMAYAN, her yere gömülebilen form.
+///
 /// View yalnızca durumu gösterir ve dokunuşları view model'e iletir. Mantığın tamamı `ConcurrencyLab`
 /// (saf, test edilebilir) ve `ConcurrencyLabViewModel` (`@MainActor` durum) içindedir.
 ///
 /// `View` protokolü `@MainActor` olarak işaretli olduğundan bu struct ve `body` otomatik olarak ana actor'dedir.
-struct ConcurrencyLabView: View {
+///
+/// `Intro`: Formun en üstüne eklenecek isteğe bağlı bölüm(ler). Laboratuvar sekmesi bir şey eklemez (`EmptyView`);
+/// mülakat demosu deneyleri kavramlarla eşleyen kısa bir özet ekler. Generic parametre sayesinde `AnyView`'a
+/// gerek kalmaz ve SwiftUI view'un tipini (dolayısıyla kimliğini) bilmeye devam eder.
+struct ConcurrencyLabForm<Intro: View>: View {
     /// `@State` + `@Observable` sınıf: SwiftUI View struct'larını sık sık yeniden oluşturur, ama `@State`
     /// ile tutulan view model ekran yaşadığı sürece BİR kez yaratılır ve korunur.
+    /// Her `ConcurrencyLabForm` kendi view model'ini oluşturur: Laboratuvar sekmesi ile mülakat demosu aynı KODU
+    /// kullanır ama durumları ayrıdır (birinde başlatılan uzun iş diğerinde görünmez).
     @State private var viewModel = ConcurrencyLabViewModel(
         settings: .forLaunch(arguments: ProcessInfo.processInfo.arguments)
     )
+    private let intro: Intro
+
+    init(@ViewBuilder intro: () -> Intro) {
+        self.intro = intro()
+    }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                parallelismSection
-                sharedStateSection
-                reentrancySection
-                cancellationSection
-            }
-            // Kimlik kabın (container) kendisinde; içindeki düğme ve metinler kendi kimliklerini korur.
-            .accessibilityIdentifier(AccessibilityID.Lab.form)
-            .navigationTitle("Laboratuvar")
+        Form {
+            intro
+            parallelismSection
+            sharedStateSection
+            reentrancySection
+            cancellationSection
         }
+        // Kimlik kabın (container) kendisinde; içindeki düğme ve metinler kendi kimliklerini korur.
+        .accessibilityIdentifier(AccessibilityID.Lab.form)
     }
 
     // MARK: - Sıralı vs Paralel
@@ -180,6 +203,13 @@ struct ConcurrencyLabView: View {
                 .monospacedDigit()
                 .accessibilityIdentifier(id)
         }
+    }
+}
+
+extension ConcurrencyLabForm where Intro == EmptyView {
+    /// Üstte ek bölüm olmadan: `ConcurrencyLabForm()`.
+    init() {
+        self.init { EmptyView() }
     }
 }
 

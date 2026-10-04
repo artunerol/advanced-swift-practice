@@ -6,18 +6,23 @@
 # lokalde de aynısı olur": YAML dosyası (.github/workflows/ci.yml) sadece bu betiği çağırır, asıl mantık burada.
 #
 # Kullanım:
+#   ./scripts/ci.sh quiz         # "Derlenir mi?" quiz örneklerini derleyiciyle doğrular (simülatör gerekmez, hızlı)
 #   ./scripts/ci.sh build        # Uygulamayı ve test paketlerini BİR kez derler (build-for-testing)
 #   ./scripts/ci.sh unit         # Birim testlerini (XCTest) derlemeden çalıştırır
 #   ./scripts/ci.sh ui           # UI testlerini (XCUITest) derlemeden çalıştırır
-#   ./scripts/ci.sh all          # build + unit + ui + kod kapsamı özeti
+#   ./scripts/ci.sh all          # quiz + build + unit + ui + kod kapsamı özeti (CI'daki akışın aynısı)
 #   ./scripts/ci.sh coverage     # Son birim testi sonucundan kod kapsamı özetini yazdırır
+#   ./scripts/ci.sh archive      # Release arşivi (.xcarchive) + zip; İMZASIZ (CD'nin ilk işi, release.yml)
 #   ./scripts/ci.sh destination  # Seçilecek simülatörü yalnızca YAZDIRIR (hiçbir şey başlatmaz)
 #   ./scripts/ci.sh clean        # build/ klasörünü siler
 #
 # Ortam değişkenleri:
-#   SIMULATOR_ID  Belirli bir simülatörün UDID'si. Verilirse otomatik seçim yapılmaz.
-#                 UDID'leri görmek için: xcrun simctl list devices available
-#                 Örnek: SIMULATOR_ID=3353AF19-5AF2-41FB-AC7A-081D32BBD30B ./scripts/ci.sh all
+#   SIMULATOR_ID       Belirli bir simülatörün UDID'si. Verilirse otomatik seçim yapılmaz.
+#                      UDID'leri görmek için: xcrun simctl list devices available
+#                      Örnek: SIMULATOR_ID=3353AF19-5AF2-41FB-AC7A-081D32BBD30B ./scripts/ci.sh all
+#   BUILD_NUMBER       (archive) CFBundleVersion, yani build numarası. CI'da github.run_number verilir. Varsayılan: 1
+#   MARKETING_VERSION  (archive) CFBundleShortVersionString, ör. 1.2.0. Verilmezse projedeki değer kullanılır.
+#                      Örnek: BUILD_NUMBER=42 MARKETING_VERSION=1.2.0 ./scripts/ci.sh archive
 #
 # Not: macOS'taki /bin/bash hâlâ 3.2 sürümü (GitHub'ın macOS runner'larında da öyle). Bu yüzden betik
 # bilerek bash 3.2 ile uyumlu yazıldı: ilişkisel dizi (declare -A), mapfile, ${var,,} gibi özellikler yok.
@@ -49,6 +54,16 @@ readonly RESULTS_DIR="build/results"
 readonly UNIT_RESULT_BUNDLE="$RESULTS_DIR/unit.xcresult"
 readonly UI_RESULT_BUNDLE="$RESULTS_DIR/ui.xcresult"
 
+# "Protocol as a type" quiz'indeki "derlenir / derlenmez" iddialarını gerçek derleyiciyle sınayan betik.
+# Betiğin sahibi Swift temelleri konusu; biz sadece çağırıyoruz.
+readonly QUIZ_SCRIPT="scripts/check-swift-quiz.sh"
+
+# Arşiv (CD) çıktıları. Testlerle aynı DerivedData'yı kullanıyoruz: Release + cihaz (iphoneos) ürünleri
+# Debug + simülatör ürünlerinden ayrı klasörlere yazılır, birbirlerini ezmezler.
+readonly ARCHIVE_DIR="build/archive"
+readonly ARCHIVE_PATH="$ARCHIVE_DIR/$SCHEME.xcarchive"
+readonly ARCHIVE_CONFIGURATION="Release"
+
 # xcodebuild, çıktısı bir terminale değil de bir boruya (pipe) gittiğinde çıktıyı tamponlar (buffer) ve
 # loglar parça parça, gecikmeli gelir. Bu değişken tamponlamayı kapatır; CI loglarını canlı izleyebiliriz.
 export NSUnbufferedIO=YES
@@ -73,16 +88,20 @@ usage() {
 Kullanım: ./scripts/ci.sh <komut>
 
 Komutlar:
+  quiz         Swift quiz örneklerini derleyiciyle doğrular (scripts/check-swift-quiz.sh)
   build        Uygulamayı ve test paketlerini derler (xcodebuild build-for-testing)
   unit         Birim testlerini çalıştırır (test-without-building, -only-testing:BookShelfTests)
   ui           UI testlerini çalıştırır (test-without-building, -only-testing:BookShelfUITests)
-  all          build + unit + ui + kod kapsamı özeti
+  all          quiz + build + unit + ui + kod kapsamı özeti
   coverage     build/results/unit.xcresult içinden kod kapsamı özetini yazdırır
+  archive      İmzasız Release arşivi: build/archive/BookShelf.xcarchive (+ .zip)
   destination  Kullanılacak simülatör hedefini yazdırır (hiçbir şey başlatmaz)
   clean        build/ klasörünü siler
 
 Ortam değişkenleri:
-  SIMULATOR_ID   Kullanılacak simülatörün UDID'si (verilmezse otomatik seçilir)
+  SIMULATOR_ID       Kullanılacak simülatörün UDID'si (verilmezse otomatik seçilir)
+  BUILD_NUMBER       archive: build numarası (CFBundleVersion), varsayılan 1
+  MARKETING_VERSION  archive: sürüm (CFBundleShortVersionString), ör. 1.2.0
 EOF
 }
 
@@ -292,12 +311,109 @@ cmd_coverage() {
     xcrun xccov view --report --only-targets "$UNIT_RESULT_BUNDLE"
 }
 
+# Quiz kontrolü: "Bu kod derlenir mi?" sorularının cevaplarını derleyiciye sorar (swiftc -typecheck).
+# Simülatör ve proje derlemesi gerektirmez, saniyeler sürer. Bu yüzden CI'da derlemeden ÖNCE koşar:
+# öğretici içerik yanlışsa pahalı macOS dakikalarını harcamadan hemen kırmızı yanar (fail fast).
+# Betiği `bash betik` diye çağırıyoruz: çalıştırılabilir biti (chmod +x) commit'lenmemiş olsa bile çalışır.
+# `set -e` sayesinde betik sıfır dışı bir kodla biterse ci.sh de aynı kodla durur.
+cmd_quiz() {
+    [[ -f "$QUIZ_SCRIPT" ]] || die "$QUIZ_SCRIPT bulunamadı."
+    log "Swift quiz örnekleri derleyiciyle doğrulanıyor ($QUIZ_SCRIPT)"
+    bash "$QUIZ_SCRIPT"
+}
+
+# Release arşivi: CD'nin (release.yml) imza gerektirmeyen ilk işi.
+#
+# Sürüm numaraları (ikisi de Info.plist'e yazılır):
+#   MARKETING_VERSION → CFBundleShortVersionString: Kullanıcının gördüğü sürüm, ör. 1.2.0. App Store kuralı:
+#     noktayla ayrılmış en fazla üç tamsayı. Git etiketi "v1.2.0" ise baştaki "v"yi workflow atar.
+#   BUILD_NUMBER → CFBundleVersion: Aynı sürümün kaçıncı derlemesi olduğu. App Store Connect, aynı sürüm için
+#     aynı build numarasını İKİNCİ KEZ kabul etmez. CI'da her çalıştırmada artan github.run_number veriyoruz.
+#
+# Proje GENERATE_INFOPLIST_FILE = YES kullanıyor: Info.plist'teki bu iki anahtar $(MARKETING_VERSION) ve
+# $(CURRENT_PROJECT_VERSION) ayarlarından üretilir. Komut satırındaki AYAR=değer biçimi, projedeki değeri yalnızca
+# bu çalıştırma için ezer (override). Proje dosyası değişmez, commit gerekmez.
+#
+# CODE_SIGNING_ALLOWED=NO: İmzalamayı tamamen kapatır. Sertifika, provisioning profile ve takım (team) olmadan
+# arşivlemenin yolu bu. Ortaya çıkan .app hiçbir cihaza kurulamaz ve App Store Connect'e yüklenemez. Ne işe yarar?
+#   - Uygulamanın Release yapılandırmasıyla ve gerçek cihaz SDK'sıyla (iphoneos, arm64) derlendiğini kanıtlar.
+#     Testler Debug + simülatörde koşar; yalnızca Release'te ortaya çıkan hataları ancak burada görürüz.
+#   - Sürüm bilgisini ve dSYM'leri (çökme raporlarını sembolize etmek için) taşıyan bir arşiv bırakır.
+# İmzalı arşiv ve TestFlight için release.yml'deki "testflight" işine bak.
+#
+# -destination 'generic/platform=iOS': Belirli bir cihaz değil, "herhangi bir iOS cihazı". Arşiv her zaman
+# cihaz için yapılır; simülatör için arşiv olmaz. Bu yüzden simülatör seçmiyor ve açmıyoruz.
+cmd_archive() {
+    local build_number="${BUILD_NUMBER:-1}"
+    local marketing_version="${MARKETING_VERSION:-}"
+
+    [[ "$build_number" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] \
+        || die "BUILD_NUMBER geçersiz: '$build_number' (beklenen: 42 ya da 42.1 gibi sayılar)."
+    if [[ -n "$marketing_version" ]]; then
+        [[ "$marketing_version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] \
+            || die "MARKETING_VERSION geçersiz: '$marketing_version' (beklenen: 1.2.0 gibi en fazla üç sayı)."
+    fi
+
+    local -a version_overrides=(CURRENT_PROJECT_VERSION="$build_number")
+    if [[ -n "$marketing_version" ]]; then
+        version_overrides+=(MARKETING_VERSION="$marketing_version")
+    fi
+
+    # Eski arşiv kalırsa xcodebuild üzerine yazar ama içinde eski dosyalar kalabilir; temiz başlayalım.
+    rm -rf "$ARCHIVE_DIR"
+    mkdir -p "$ARCHIVE_DIR"
+
+    run_xcodebuild archive \
+        -project "$PROJECT" \
+        -scheme "$SCHEME" \
+        -configuration "$ARCHIVE_CONFIGURATION" \
+        -destination "generic/platform=iOS" \
+        -derivedDataPath "$DERIVED_DATA_PATH" \
+        -archivePath "$ARCHIVE_PATH" \
+        CODE_SIGNING_ALLOWED=NO \
+        "${version_overrides[@]}"
+
+    # Arşivin kök Info.plist'i, içindeki uygulamanın sürüm bilgisini de taşır. Override'ın gerçekten işe yaradığını
+    # (ör. biri ileride elle yazılmış bir Info.plist'e geçerse) burada yakalarız: yanlış numarayla yüklemekten iyidir.
+    local archive_info="$ARCHIVE_PATH/Info.plist"
+    local actual_build actual_version
+    actual_build="$(plutil -extract ApplicationProperties.CFBundleVersion raw -o - "$archive_info")" \
+        || die "Arşivde CFBundleVersion okunamadı: $archive_info"
+    actual_version="$(plutil -extract ApplicationProperties.CFBundleShortVersionString raw -o - "$archive_info")" \
+        || die "Arşivde CFBundleShortVersionString okunamadı: $archive_info"
+    [[ "$actual_build" == "$build_number" ]] \
+        || die "Build numarası beklenen gibi değil: arşivde $actual_build, beklenen $build_number."
+    if [[ -n "$marketing_version" && "$actual_version" != "$marketing_version" ]]; then
+        die "Sürüm beklenen gibi değil: arşivde $actual_version, beklenen $marketing_version."
+    fi
+
+    # .xcarchive bir klasör (paket). Tek dosya olarak saklamak ve GitHub Release'e eklemek için zip'liyoruz.
+    # Neden zip yerine ditto? ditto, Apple paketlerindeki sembolik bağlantıları (symlink) ve çalıştırılabilir
+    # bitlerini korur. (upload-artifact klasör yüklerken dosya izinlerini korumaz; önceden zip'lemek bunu da çözer.)
+    local zip_path="$ARCHIVE_DIR/$SCHEME-$actual_version-$actual_build.xcarchive.zip"
+    ditto -c -k --keepParent "$ARCHIVE_PATH" "$zip_path"
+
+    # GitHub Actions'ta adımın çıktısı (step output) olarak da ver: sonraki adımlar dosya adını tahmin etmesin,
+    # ${{ steps.<id>.outputs.zip_path }} diye okusun. $GITHUB_OUTPUT yalnızca Actions içinde tanımlıdır.
+    if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+        {
+            echo "zip_path=$zip_path"
+            echo "marketing_version=$actual_version"
+            echo "build_number=$actual_build"
+        } >> "$GITHUB_OUTPUT"
+    fi
+
+    log "Arşiv hazır: $ARCHIVE_PATH (sürüm $actual_version, build $actual_build, İMZASIZ)"
+    log "Zip: $zip_path"
+}
+
 cmd_all() {
+    cmd_quiz
     cmd_build
     cmd_unit
     cmd_ui
     cmd_coverage
-    log "Tamamlandı: derleme + birim testleri + UI testleri (${SECONDS} sn). Sonuçlar: $RESULTS_DIR/"
+    log "Tamamlandı: quiz + derleme + birim testleri + UI testleri (${SECONDS} sn). Sonuçlar: $RESULTS_DIR/"
 }
 
 cmd_clean() {
@@ -308,11 +424,13 @@ cmd_clean() {
 main() {
     local command="${1:-}"
     case "$command" in
+        quiz) cmd_quiz ;;
         build) cmd_build ;;
         unit) cmd_unit ;;
         ui) cmd_ui ;;
         all) cmd_all ;;
         coverage) cmd_coverage ;;
+        archive) cmd_archive ;;
         clean) cmd_clean ;;
         destination)
             resolve_destination

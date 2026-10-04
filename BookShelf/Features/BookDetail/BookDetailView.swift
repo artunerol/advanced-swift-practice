@@ -36,7 +36,9 @@ struct BookDetailView: View {
         _viewModel = State(initialValue: BookDetailViewModel(
             book: book,
             service: dependencies.bookService,
-            favorites: dependencies.favorites
+            favorites: dependencies.favorites,
+            // Kullanıcının okuma hızı ayarı (UserDefaults). `-ui-testing` ile her açılışta sıfırlanan ayrı bir alandan okunur.
+            pagesPerHour: BookDetailViewModel.readingSpeed(in: PersistenceLocation.current.defaults)
         ))
         self.favoriteButtonPlacement = favoriteButtonPlacement
     }

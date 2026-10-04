@@ -47,8 +47,11 @@ jobs:
     # Runner: İşin çalışacağı makine. GitHub'ın barındırdığı macOS 26 sanal makinesi; her iş için sıfırdan açılır.
     # iOS derlemek için Xcode, Xcode için macOS gerekir; bu yüzden ubuntu-latest kullanamayız.
     runs-on: macos-26
-    # Bir şey takılırsa (ör. simülatör açılmazsa) makine saatlerce boşa dönmesin. Normal süre birkaç dakika.
-    timeout-minutes: 30
+    # Bir şey takılırsa (ör. simülatör açılmazsa) makine saatlerce boşa dönmesin.
+    # Ölçülen süre (ilk gerçek çalıştırma, macos-26): toplam ~16 dk. Derleme ~1 dk, simülatörün ilk açılışı ~2 dk,
+    # 165 birim testi ~2 dk, 19 UI testi ~7 dk (CI'da UI testi başına ~20 sn). UI testleri çoğaldıkça ve kalan testler
+    # tekrar denendikçe süre uzar. 30 dk sınırı bu yüzden fazla sıkıydı; asıl koruma aşağıdaki adım sınırlarında.
+    timeout-minutes: 60
 
     # Adımlar (step) sırayla, aynı makinede çalışır. Bir adım başarısız olursa sonrakiler varsayılan olarak ATLANIR
     # (bir adımda "if:" ile bu davranışı değiştirebiliriz).
@@ -61,7 +64,8 @@ jobs:
       # Runner'da birden çok Xcode kurulu. Hangisinin kullanılacağını açıkça seçiyoruz.
       # latest-stable: kurulu en yeni KARARLI (beta olmayan) Xcode. Artısı: bakım gerektirmez, yeni SDK'ları
       # otomatik alırız. Eksisi: GitHub imajı güncellediğinde Xcode sürümü "kendiliğinden" değişebilir.
-      # Tekrarlanabilirlik daha önemliyse sürümü sabitle: xcode-version: '26.3'. Sürümü tırnak içinde yaz:
+      # (İlk çalıştırmada macos-26 imajında Xcode 26.6 seçildi; lokalde 26.3 olabilir: derleyiciler farklı.)
+      # Tekrarlanabilirlik daha önemliyse imajda kurulu bir sürüme sabitle: xcode-version: '26.6'. Sürümü tırnak içinde yaz:
       # tırnaksız 26.0 gibi bir değer YAML'da sayı olarak okunur ve "26"ya dönüşebilir.
       - name: Xcode'u seç
         uses: maxim-lobanov/setup-xcode@v1
@@ -74,20 +78,39 @@ jobs:
         run: |
           sw_vers
           xcodebuild -version
+          # Swift derleyici sürümü: quiz kontrolü derleyicinin verdiği cevaba (ve hata mesajına) bakar.
+          # latest-stable yüzünden CI'daki Xcode lokaldekinden yeni olabilir; bir quiz farkı çıkarsa ilk bakılacak satır.
+          xcrun swift --version
           echo "iOS Simulator SDK: $(xcrun --sdk iphonesimulator --show-sdk-version)"
           xcrun simctl list devices available
           if command -v xcbeautify >/dev/null; then echo "xcbeautify: $(xcbeautify --version || true)"; else echo "xcbeautify yok; ham xcodebuild çıktısı kullanılacak"; fi
           echo "Seçilecek hedef: $(./scripts/ci.sh destination)"
 
+      # Hızlı kontrol (fail fast): "Bu kod derlenir mi?" quiz'indeki iddiaları swiftc ile sınar. Simülatör ve proje
+      # derlemesi gerektirmez, saniyeler sürer. Bilerek derlemeden ÖNCE: öğretici içerik yanlışsa pahalı macOS
+      # dakikalarını harcamadan hemen kırmızı yanar. Başarısız olursa sonraki adımlar varsayılan koşul (success())
+      # yüzünden atlanır. Lint (SwiftLint) gibi diğer hızlı kontroller de pipeline'da bu konuma konur.
+      - name: Swift quiz örneklerini derleyiciyle doğrula
+        id: quiz
+        timeout-minutes: 5
+        run: ./scripts/ci.sh quiz
+
       # BİR kez derle: uygulama + birim test paketi + UI test paketi. Çıktı build/DerivedData altına gider.
       # "id:" sayesinde sonraki adımlar bu adımın sonucuna (steps.build.outcome) bakabilir.
+      #
+      # Adım sınırları (step timeout-minutes): Takılan bir adım kendi süresi dolunca BAŞARISIZ sayılır ve iş devam
+      # eder; böylece aşağıdaki "if: always()" adımı .xcresult'ı yine yükler. Sadece iş (job) sınırı olsaydı takılan
+      # adım bütün işi tüketir, teşhis için elimizde bir şey kalmazdı. Sınırlar ölçülen sürelerin birkaç katı.
       - name: Derle (build-for-testing)
         id: build
+        timeout-minutes: 20
         run: ./scripts/ci.sh build
 
       # Birim testleri, az önce derlenmiş ürünlerle (yeniden derlemeden) çalışır.
+      # Süreye simülatörün ilk açılışı da dahil (temiz runner'da ~2 dk).
       - name: Birim testleri (XCTest)
         id: unit
+        timeout-minutes: 20
         run: ./scripts/ci.sh unit
 
       # UI testleri. Varsayılan olarak önceki adım başarısızsa bu adım atlanırdı; ama birim testleri kırıldığında
@@ -95,6 +118,7 @@ jobs:
       # çalıştırmanın anlamı yok. !cancelled(): workflow iptal edildiyse (ör. yeni push geldi) boşuna çalışma.
       - name: UI testleri (XCUITest)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 35
         run: ./scripts/ci.sh ui
 
       # Kod kapsamı tablosunu hem loga hem de çalıştırmanın "Summary" sayfasına yaz.

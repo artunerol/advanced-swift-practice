@@ -1,14 +1,16 @@
 import SwiftUI
 
-/// Protocol'leri üç bölümde gösteren ekran:
-/// - **Liste:** Farklı tiplerden oluşan `[any ReadingItem]`, sıralama ve toplam süre.
+/// "Protocol tip olarak" konusunun çalışan örnekleri, iki bölümde:
+/// - **Liste:** Farklı tiplerden oluşan `[any ReadingItem]` (existential), sıralama ve toplam süre.
 /// - **Raf:** `associatedtype`'lı `Shelf` protocol'ü, generic `ReadingShelf<Novel>` ve `Comparable` ile sıralama.
-/// - **Dispatch:** Gereksinim ile extension'a özel üye arasındaki fark ve protocol ile bağımlılık enjeksiyonu.
 ///
-/// Kendi `NavigationStack`'ini içermez; Mülakat merkezindeki konu ekranının (`InterviewTopicScreen`) içinde gösterilir.
+/// Quiz ekranının (`SwiftQuizView`) altındaki bağlantıyla açılır. Dispatch tuzağı ve varsayılan uygulamalar ise
+/// "Protocol + extension" konusunun demosunda (`ProtocolExtensionDemoView`).
+///
+/// Kendi `NavigationStack`'ini içermez; konu ekranının yığınına push edilir.
 struct ProtocolsView: View {
     enum Experiment: CaseIterable, Identifiable {
-        case list, shelf, dispatch
+        case list, shelf
 
         var id: Self { self }
 
@@ -16,7 +18,6 @@ struct ProtocolsView: View {
             switch self {
             case .list: AccessibilityID.Fundamentals.Protocols.listSegment
             case .shelf: AccessibilityID.Fundamentals.Protocols.shelfSegment
-            case .dispatch: AccessibilityID.Fundamentals.Protocols.dispatchSegment
             }
         }
     }
@@ -46,7 +47,6 @@ struct ProtocolsView: View {
             switch experiment {
             case .list: listSections
             case .shelf: shelfSections
-            case .dispatch: dispatchSections
             }
         }
         .navigationTitle("Protocol'ler")
@@ -161,43 +161,6 @@ struct ProtocolsView: View {
         shelfMessage = shelf.add(novel)
             ? "Eklendi: \(novel)"
             : "Zaten rafta, eklenmedi: \(novel)"
-    }
-
-    // MARK: - Dispatch
-
-    @ViewBuilder
-    private var dispatchSections: some View {
-        Section {
-            Text(verbatim: "Magazine olarak: \(ProtocolDispatchDemo.viaConcreteType)")
-                .accessibilityIdentifier(ID.dispatchConcrete)
-            Text(verbatim: "any ReadingItem olarak: \(ProtocolDispatchDemo.viaExistential)")
-                .accessibilityIdentifier(ID.dispatchExistential)
-            Text(verbatim: "Generic (some) içinde: \(ProtocolDispatchDemo.viaGeneric)")
-                .accessibilityIdentifier(ID.dispatchGeneric)
-            Text(verbatim: "Gereksinim, any üzerinden: \(ProtocolDispatchDemo.requirementViaExistential)")
-                .accessibilityIdentifier(ID.dispatchRequirement)
-        } header: {
-            Text("Aynı dergi, dört farklı okuma")
-                .textCase(nil)
-        } footer: {
-            Text("""
-            shelfSection protokolde gereksinim değil, yalnızca extension'da var: Hangi uygulamanın çalışacağına derleme anındaki tip karar verir (statik dispatch). \
-            Magazine'in kendi shelfSection'ı sadece değişkenin tipi Magazine iken görünür. symbolName ise gereksinim; her yerden Magazine'in değeri gelir (dinamik dispatch). \
-            Kural: Tiplerin özelleştirmesini istediğin her şeyi gereksinim olarak tanımla.
-            """)
-        }
-
-        Section {
-            Text("""
-            Kitaplar ekranı somut LocalBookService'e değil, BookServiceProtocol'e bağlı. \
-            Uygulamada gerçek servis, testlerde ise anında cevap veren ya da bilerek hata fırlatan StubBookService verilir. \
-            Ekran kodu hiç değişmez; çağrılar dinamik dispatch ile o an verilen tipe gider.
-            """)
-            .font(.callout)
-        } header: {
-            Text("Protocol ile bağımlılık enjeksiyonu")
-                .textCase(nil)
-        }
     }
 }
 

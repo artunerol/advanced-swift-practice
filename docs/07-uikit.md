@@ -5,9 +5,11 @@
 - **Mevcut kodun büyük kısmı UIKit.** Yıllardır yayında olan uygulamaların çoğu UIKit ile yazıldı. Yeni ekranlar SwiftUI ile yazılsa bile, bir işe girdiğinde büyük ihtimalle UIKit kodunu okuyacak, düzeltecek ve SwiftUI ile birleştireceksin.
 - **SwiftUI'ın altında çoğu zaman UIKit var.** iOS'ta `List`, `NavigationStack`, `TabView` gibi bileşenler perde arkasında büyük ölçüde UIKit nesneleriyle çizilir (bu bir uygulama ayrıntısıdır, sürümden sürüme değişebilir). Yaşam döngüsünü, hücre yeniden kullanımını ve bellek yönetimini bilmek, SwiftUI'daki garip davranışları da anlamanı sağlar.
 - **Her şey SwiftUI'da yok.** Bazı API'ler (ör. bazı kamera/harita/metin düzenleme ihtiyaçları, eski üçüncü parti SDK'lar) hâlâ yalnızca UIKit ile gelir. `UIViewRepresentable` / `UIHostingController` köprülerini bilmek zorunludur.
-- **Mülakatlarda klasik sorular buradan gelir:** view controller yaşam döngüsü, hücre yeniden kullanımı, delegate kalıbı, retain cycle, Auto Layout.
+- **Mülakatlarda klasik sorular buradan gelir:** view controller yaşam döngüsü (özellikle `viewDidLayoutSubviews`), dinamik yükseklikli hücreler, `frame` ile `bounds` farkı, `UITableView` mı `UICollectionView` mı, delegate kalıbı, retain cycle, Auto Layout.
 
 Bu projede **Favoriler** sekmesi bilerek UIKit ile yazıldı ve SwiftUI'ın içine gömüldü; detay ekranı ise yine SwiftUI. Yani iki yönlü köprünün ikisini de gerçek kodda görebilirsin.
+
+**Mülakat** sekmesinin UIKit bölümünde dört canlı laboratuvar var (hepsi kodla yazılmış UIKit, SwiftUI'a `UIViewControllerRepresentable` ile gömülü): yaşam döngüsü günlüğü, açılıp kapanan self-sizing hücreler, döndürülebilen bir view ile frame/bounds, aynı kitapların üç farklı liste/ızgara görünümü. Her konunun "Demo" bölümünde lab'ı, "Kod" bölümünde hangi dosyada neye bakman gerektiğini bulursun.
 
 ## Temel kavramlar
 
@@ -70,6 +72,62 @@ Bir view controller ile onun **view'ı** farklı şeylerdir. VC oluşturulduğun
 - `viewDidLoad` **bir kez**, `viewWillAppear` **her seferinde** çağrılır. Sekmeye her dönüşte veya üstteki ekrandan her geri gelişte `viewWillAppear` yeniden çalışır.
 - Bu metotları override ederken **`super`'i çağır**. UIKit bazı işlerini oralarda yapar.
 - SwiftUI karşılaştırması: SwiftUI'da `.task { for await ... }` modifier'ı, view görünürken bir task başlatır ve view kaybolunca **otomatik** iptal eder. UIKit'te bunu elle yaparız: `viewWillAppear`'da başlat, `viewDidDisappear`'da iptal et. [FavoritesViewController.swift](../BookShelf/Features/Favorites/FavoritesViewController.swift) tam olarak bunu yapıyor.
+
+**Nereye ne konur? (kısa kural)**
+
+| İş | Yer | Neden |
+|---|---|---|
+| Bağımlılıkları almak | `init` | View'a dokunma: `view`'a erişmek onu hemen yükler. |
+| Alt view, constraint, delegate, bir kez yapılan kurulum | `viewDidLoad` | Bir kez çalışır. |
+| Görünüşe bağlı UI güncellemesi (trait'e, boyuta bağlı) | `viewIsAppearing` | Trait'ler, pencere ve geometri artık geçerli; `viewWillAppear`'dan sonra ama aynı karede. |
+| Dinlemeyi / zamanlayıcıyı başlatmak | `viewWillAppear` | Her görünüşte. |
+| Geometriye bağlı hesap (köşe yarıçapı, `convert`, çizim yolu) | `viewDidLayoutSubviews` | Frame'ler kesin; ama **çok kez** çağrılır → ucuz ve idempotent tut. |
+| Dinlemeyi durdurmak | `viewDidDisappear` | Geçiş gerçekten bitti (`viewWillDisappear` iptal edilebilir). |
+| Döndürme / pencere boyutu | `viewWillTransition(to:with:)` | Coordinator ile animasyona eşlik edilir. |
+| Trait değişimi (koyu mod, size class, yazı boyutu) | `registerForTraitChanges(_:handler:)` (iOS 17+) | `traitCollectionDidChange` iOS 17'de deprecated. |
+
+**`setNeedsLayout` ve `layoutIfNeeded`:** `setNeedsLayout()` yalnızca "bir sonraki çizimden önce yeniden yerleştir" diye işaretler; ucuzdur, hemen bir şey olmaz. `layoutIfNeeded()` işaret varsa yerleşimi **hemen ve senkron** yapar (constraint değişikliğini animasyon bloğu içinde uygulamanın klasik yolu). İkisi de yalnızca `viewWillLayoutSubviews` / `viewDidLayoutSubviews` çiftini tetikler; `viewDidLoad` tekrar çalışmaz, çünkü view zaten yüklüdür.
+
+#### Lab'da gözlenen gerçek sıra (iOS 26.2 simülatörü, UI testiyle doğrulandı)
+
+Yaşam döngüsü lab'ı ([LifecycleLabViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/Lifecycle/LifecycleLabViewController.swift)) üstte gözlenen bir "Ana" ekranı, altta canlı bir günlük gösterir. Ana, kendi `UINavigationController`'ının (çubuğu gizli) kök ekranıdır. Günlük satırları sadeleştirilmiş haliyle:
+
+İlk görünüş:
+
+```
+Ana · init
+Ana · willMove(toParent: UINavigationController)   ← nav controller'ın kökü olurken (init sırasında)
+Ana · loadView
+Ana · viewDidLoad
+Ana · viewWillAppear
+Ana · viewIsAppearing
+Ana · viewWillLayoutSubviews
+Ana · viewDidLayoutSubviews
+Ana · viewDidAppear
+Ana · didMove(toParent: UINavigationController)    ← geçiş bitince
+```
+
+`.fullScreen` ile sun, sonra "Kapat":
+
+```
+FullScreen · init → loadView → viewDidLoad
+Ana        · viewWillDisappear
+FullScreen · viewWillAppear → viewIsAppearing → (layout) → viewDidAppear
+Ana        · viewDidDisappear
+── Kapat (dismiss) ──
+FullScreen · viewWillDisappear
+Ana        · viewWillAppear → viewIsAppearing → viewDidAppear
+FullScreen · viewDidDisappear
+FullScreen · deinit
+```
+
+**Klasik tuzak, `.pageSheet`:** Aynı ekran `.pageSheet` ile sunulup kapatıldığında Ana'ya **hiçbir** `viewWillDisappear` / `viewDidDisappear` / `viewWillAppear` / `viewDidAppear` gelmez; yalnızca birkaç `viewWillLayoutSubviews` / `viewDidLayoutSubviews` gelir. Sebep: Sheet'te sunan ekranın view'ı pencereden çıkarılmaz, sheet onun üstünde durur. `.fullScreen`'de ise sunum bitince sunan ekranın view'ı pencereden kaldırılır; bu yüzden disappear (ve kapanışta yeniden appear) bildirimleri gelir. Pratik sonuç: "Sheet kapanınca listeyi tazelerim" diye `viewWillAppear`'a güvenme; sunulan ekran bir delegate ya da closure ile haber versin. Kullanıcının aşağı kaydırarak kapatmasını yakalamak için `presentationController?.delegate` + `presentationControllerDidDismiss(_:)` vardır (programatik `dismiss` sonrası çağrılmaz).
+
+**Push:** `Push · viewDidLoad` → `Ana · viewWillDisappear` → `Push · viewWillAppear` → ... → `Ana · viewDidDisappear` → `Push · viewDidAppear`. Ana'nın içinde bir child VC varsa, o da Ana ile birlikte disappear alır: görünüş bildirimleri containment ağacında aşağı doğru iletilir.
+
+**Child VC (containment):** Ekleme sırası `addChild` (child'a `willMove(toParent:)` otomatik gider) → `view.addSubview(child.view)` + constraint → `child.didMove(toParent: self)`. Çıkarma: `child.willMove(toParent: nil)` → `child.view.removeFromSuperview()` → `child.removeFromParent()` (`didMove(toParent: nil)` otomatik). Pencerede görünen bir ekrana eklenen child `viewWillAppear` … `viewDidAppear` bildirimlerini, çıkarılırken de `viewWillDisappear` … `viewDidDisappear` bildirimlerini kendiliğinden alır. Lab'da ilginç bir ayrıntı görülür: Hem eklemede hem çıkarmada günlükte `didMove(toParent:)` **iki kez** görünür; biri bizim çağrımız (ya da `removeFromParent`'ın), diğeri UIKit'in görünüş geçişi bitince yaptığı ek çağrı (iOS 26.2'de gözlendi; belgelenmiş bir davranış değil, bir uygulama ayrıntısı). Ders: `didMove(toParent:)` içine yalnızca bir kez yapılması gereken iş koyma.
+
+**`deinit` ve ana actor:** `deinit` nonisolated'dır; ana actor'deki günlüğe senkron yazamaz. Lab bu yüzden iki `Sendable` değeri (günlük, ad) kopyalayıp `Task { @MainActor in ... }` açar ([LoggingViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/Lifecycle/LoggingViewController.swift)); "deinit" satırı günlüğe birkaç an sonra düşer. Swift 6.2'nin `isolated deinit`'i daha temiz olurdu, ama Xcode 26.3 (Swift 6.2.4) bu projede derlemeyi kırdı: Alt sınıf, `isolated deinit`'li üst sınıftan önceki bir dosyada derlenince emit-module adımı `'@preconcurrency' attribute cannot be applied to this declaration` hatası veriyor (dosya sırasına bağlı bir derleyici hatası; küçük bir örnekle yeniden üretildi).
 
 ### 3. `UITableView`, hücre yeniden kullanımı ve diffable data source
 
@@ -258,6 +316,111 @@ SwiftUI TabView (RootTabView)
             └─ UIHostingController<BookDetailView> (yine SwiftUI)
 ```
 
+### 9. Dinamik yükseklikli (self-sizing) hücreler
+
+Hücre yüksekliğini sen hesaplamazsın; **Auto Layout hücrenin içeriğinden hesaplar.** Tarif:
+
+1. **Tablo:** `rowHeight = UITableView.automaticDimension` ve gerçeğe yakın, sıfırdan farklı bir `estimatedRowHeight`. (iOS 11'den beri ikisi de varsayılan olarak `automaticDimension`; açıkça yazmak niyeti belli eder.) `heightForRowAt`'te sabit bir değer döndürürsen o satırlarda self-sizing devre dışı kalır.
+2. **Hücre:** Alt view'ları `contentView`'a ekle (hücrenin kendisine değil) ve constraint'leri `contentView`'un **üstünden altına kesintisiz** bağla. Zincirde bir halka eksikse (ör. alt kenara bağlanmamış bir label) yükseklik hesaplanamaz.
+3. **Label:** `numberOfLines = 0` (sınırsız) ya da istediğin bir sınır; Dynamic Type için `preferredFont(forTextStyle:)` + `adjustsFontForContentSizeCategory = true`. Kullanıcı yazıyı büyütünce hücre kendiliğinden uzar.
+4. **Konsolda `UIView-Encapsulated-Layout-Height` çakışması:** Tablo hücreyi ölçmeden önce ona geçici bir yükseklik verir; zincirin tamamı zorunluysa (1000) bu değerle çakışır. Dikey zincirden bir constraint'in (genellikle alttakinin) önceliğini 999 yapmak yeterli.
+
+```swift
+// BookSummaryCell.configureLayout() — kısaltılmış
+let bottom = row.bottomAnchor.constraint(equalTo: contentView.layoutMarginsGuide.bottomAnchor)
+bottom.priority = .required - 1   // 999
+NSLayoutConstraint.activate([
+    row.topAnchor.constraint(equalTo: contentView.layoutMarginsGuide.topAnchor),
+    row.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor),
+    row.trailingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.trailingAnchor),
+    bottom,
+])
+```
+
+**Klasik data source ve birden çok hücre tipi.** Mülakatta beklenen kalıp: `register` → `numberOfRowsInSection` → `cellForRowAt` içinde `dequeueReusableCell(withIdentifier:for:)`. Farklı hücre tiplerini tek tabloda göstermenin en okunur yolu satırları ilişkili değerli bir `enum` ile modellemek:
+
+```swift
+enum Row: Equatable {
+    case author(name: String, bookCount: Int, index: Int)
+    case book(Book)
+}
+
+func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    switch rows[indexPath.row] {
+    case let .author(name, bookCount, index):
+        let cell = tableView.dequeueReusableCell(withIdentifier: AuthorHeaderCell.reuseIdentifier, for: indexPath)
+        (cell as? AuthorHeaderCell)?.configure(authorName: name, bookCount: bookCount, index: index)
+        return cell
+    case .book(let book):
+        let cell = tableView.dequeueReusableCell(withIdentifier: BookSummaryCell.reuseIdentifier, for: indexPath)
+        (cell as? BookSummaryCell)?.configure(with: book, isExpanded: expandedBookIDs.contains(book.id))
+        return cell
+    }
+}
+```
+
+`for: indexPath` sürümü kayıtlı sınıftan her zaman bir hücre döndürür (kimlik kayıtlı değilse çöker); eski `dequeueReusableCell(withIdentifier:)` ise `nil` dönebilir.
+
+**Yükseklik çalışırken değişirse (aç/kapa):**
+
+```swift
+func toggleBook(at indexPath: IndexPath) {
+    // 1) Durum VC'de: hücreler yeniden kullanıldığı için "açık" bilgisi hücrede saklanmaz.
+    // 2) Görünen hücreyi yerinde güncelle (reloadRows hücreyi baştan kurar, çapraz geçiş yapar).
+    (tableView.cellForRow(at: indexPath) as? BookSummaryCell)?.setExpanded(isExpanded)
+    // 3) Boş toplu güncelleme: veri değişmedi, tablo yükseklikleri yeniden sorup animasyonla uygular.
+    tableView.performBatchUpdates(nil)   // eski yazımı: beginUpdates() + endUpdates()
+}
+```
+
+`prepareForReuse()` yalnızca **geçici** durumu sıfırlamak içindir (süren bir resim indirmesi, açık/kapalı görünüm). İçeriği yine `cellForRowAt`'te her seferinde baştan ver. Modern alternatif: diffable data source + `UIListContentConfiguration` (Favoriler ekranı); self-sizing kuralları aynıdır, içerik değişince `snapshot.reconfigureItems(_:)`.
+
+### 10. `frame` ve `bounds`
+
+```
+container (üst view); koordinatları (0,0)'dan başlar
+│
+│     ┌ ─ ─ ─ ─ ─ ─ ─ ┐   ← child.frame: dönmüş child'ı saran, eksen hizalı kutu
+│           ╱╲              (container'ın koordinatlarında)
+│     │   ╱    ╲      │
+│       ╱ child  ╲
+│     │ ╲        ╱    │
+│         ╲    ╱
+│     │     ╲╱        │
+│     └ ─ ─ ─ ─ ─ ─ ─ ┘
+│
+child.bounds = (0, 0, 120, 80)   → kendi koordinatları; transform DEĞİŞTİRMEZ
+child.center = (130, 130)        → container'ın koordinatlarında; transform DEĞİŞTİRMEZ
+```
+
+- **`frame`**: View'ın **üst view'ın** koordinat sistemindeki dikdörtgeni. "Babamın içinde neredeyim, ne kadar yer kaplıyorum?"
+- **`bounds`**: View'ın **kendi** koordinat sistemindeki dikdörtgeni. Origin genellikle (0, 0), size içeriğin boyutu. Alt view'ların `frame`'i bu sisteme göredir. Bu yüzden bir alt view'ı üstünü kaplayacak şekilde yerleştirirken `child.frame = parent.bounds` yazılır, `parent.frame` değil.
+- **`center`**: Üst view'ın koordinatlarında. `transform` katmanın `anchorPoint`'i (varsayılan orta nokta) etrafında uygulanır.
+- **`transform` (döndürme/ölçek)**: `bounds` ve `center` değişmez; `frame` dönüşmüş view'ı saran kutuya döner. 100×100'lük bir view 45° dönünce frame ≈ 141×141 olur (100·√2). UIView.h açıkça uyarır: *dönüşmüş view'da frame'i kullanma, bounds + center kullan.* Apple'ın dokümantasyonu bu durumda frame'in değerini "tanımsız, yok sayılmalı" diye niteler. Pratikte okunan değer saran kutudur (lab ve birim testleri bunu gösterir), ama konumu/boyutu frame'e değer atayarak değiştirmeye kalkma.
+- **`bounds.origin`'i değiştirmek**: Alt view'lar ekranda kayar ama `frame`'leri değişmez; çünkü frame'in tanımlı olduğu koordinat sisteminin kendisi kaydı. **`UIScrollView` tam olarak böyle kaydırır: `contentOffset` == `bounds.origin`.** Kaydırınca hiçbir alt view'ın frame'i değişmez.
+- **`convert(_:to:)` / `convert(_:from:)`**: Bir dikdörtgeni/noktayı başka bir view'ın koordinatlarına çevirir. `view.convert(view.bounds, to: nil)` pencere koordinatlarını verir. Yerleşim bittikten sonra (ör. `viewDidLayoutSubviews`) çağır.
+
+Lab ([FrameBoundsViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/FrameBounds/FrameBoundsViewController.swift)): gri bir container ve içinde mavi bir child var. Child Auto Layout kullanmıyor; `bounds` + `center` ile konumlanıyor. Kaydırıcılarla döndür / ölçekle / container'ın `bounds.origin.y`'sini kaydır; turuncu kesikli çerçeve `child.frame`'i container'ın koordinatlarında çizer, etiketler değerleri canlı gösterir. Sayfanın kendisi de bir `UIScrollView`; en alttaki satır kaydırdıkça `contentOffset.y` ile `bounds.origin.y`'nin hep eşit olduğunu gösterir.
+
+### 11. `UITableView` mı `UICollectionView` mı?
+
+| İhtiyaç | Seçim |
+|---|---|
+| Tek sütunlu, dikey liste; ayar ekranı, mesaj listesi | `UITableView` (ya da collection view + list configuration) |
+| Satır kaydırma eylemleri, düzenleme modu (silme/taşıma), bölüm başlıkları | İkisi de: table'da hazır; collection view'da iOS 14+ list configuration ile |
+| Izgara, kartlar, farklı yerleşimli bölümler | `UICollectionView` + compositional layout |
+| Dikey sayfa içinde yatay kayan bölüm | `UICollectionView` + `orthogonalScrollingBehavior` |
+| Tasarımın ileride değişmesi muhtemel | `UICollectionView` (layout'u değiştirmek view'ı değiştirmekten kolay) |
+
+- **Tablo**nun yerleşimi sabittir: tek sütun, dikey. Bu kısıt aynı zamanda kolaylıktır; çok şey hazır gelir.
+- **Collection view** yerleşim bilmez; neyin nerede duracağına bir layout nesnesi karar verir. **Compositional layout** (iOS 13+) parçaları: item → group → section → layout. Boyutlar `.fractionalWidth/Height`, `.absolute` ya da `.estimated` (self-sizing) ile verilir; section provider her bölüm için farklı yerleşim döndürebilir.
+- **List configuration** (iOS 14+): `UICollectionViewCompositionalLayout.list(using: UICollectionLayoutListConfiguration(appearance: .insetGrouped))` collection view'ı tablo gibi gösterir. Apple bunu WWDC20'de ("Lists in UICollectionView") tablo benzeri listeler kurmanın modern yolu olarak tanıttı; `UITableView` ise deprecated değil ve yaygın biçimde kullanılmaya devam ediyor.
+- **`CellRegistration`** (iOS 14+): Hücre ve öğe tipi generic parametredir; string reuse identifier ve `as!` dönüşümü yok. Kayıt, cell provider kapanışının **dışında** bir kez oluşturulur; içinde oluşturmak yeniden kullanımı engeller ve iOS 15+ çalışma anında istisna fırlatır.
+- **Diffable kimlikleri benzersiz olmalı:** Aynı kitabı hem "öne çıkanlar"da hem "tüm kitaplar"da göstermek için öğe kimliği bölümü de içerir: `GridItem(section: .featured, bookID: 1)`. Aynı kimliği snapshot'a iki kez eklemek çalışma anında hata verir.
+- **Gerçek bir tuzak (bu projede yaşandı):** iOS 16'daki `NSCollectionLayoutGroup.horizontal(layoutSize:repeatingSubitem:count:)` item'ın genişliğini **zorlamaz** (eski, deprecated `subitem:count:` zorluyordu). SDK başlık dosyası "count tekrarın gruba sığması çağıranın sorumluluğu" der. Item'a `.fractionalWidth(1)` verince her kart satırın tamamını kapladı ve ikinci sütun ekrandan taştı; çözüm `.fractionalWidth(1 / sütunSayısı)` ve boşluğu item'ın `contentInsets`'i ile vermek.
+
+Lab ([TableVsCollectionViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/TableVsCollection/TableVsCollectionViewController.swift)): Aynı kitaplar üstteki seçiciyle üç biçimde: `UITableView`, list configuration'lı `UICollectionView` ve üstte yatay kayan "öne çıkanlar" + altta iki sütunlu ızgara. Üçü de diffable data source kullanır; değişen tek şey view ve yerleşim.
+
 ## Bu projede nerede?
 
 | Dosya | Tip / fonksiyon | Ne gösteriyor? |
@@ -275,6 +438,18 @@ SwiftUI TabView (RootTabView)
 | [AccessibilityID+Favorites.swift](../Shared/AccessibilityID+Favorites.swift) | `AccessibilityID.Favorites` | UIKit'te `accessibilityIdentifier`; kimliği olmayan `UIContextualAction` ve iOS 26 alert düğmeleri için XCUITest notları |
 | [FavoritesViewControllerTests.swift](../BookShelfTests/Favorites/FavoritesViewControllerTests.swift) | `simulateAppearance(of:)`, `waitUntil(...)`, `waitForCompletion(of:)`, `testViewControllerIsReleasedWhileObservingAndDeinitCancelsTask` | Pencere olmadan VC testi, polling ile async bekleme, iptal testi, `weak` referansla sızıntı testi |
 | [FavoritesStateTests.swift](../BookShelfTests/Favorites/FavoritesStateTests.swift) | `FavoritesStateTests` | UIKit'siz, anında çalışan saf mantık testleri |
+| [LoggingViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/Lifecycle/LoggingViewController.swift) | `LoggingViewController` | Her yaşam döngüsü override'ı (önce `super`), `loadView`'da `super` yok, `registerForTraitChanges`, nonisolated `deinit`'ten `Task` ile günlüğe yazmak |
+| [LifecycleSubjectViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/Lifecycle/LifecycleSubjectViewController.swift) | `makeModal(style:)`, `pushDetail()`, `toggleChild()`, `relayout()` | `.pageSheet` vs `.fullScreen`, push, child VC containment sırası, `setNeedsLayout` + `layoutIfNeeded` |
+| [LifecycleLogger.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/Lifecycle/LifecycleLogger.swift) | `LifecycleLogger`, `LifecycleLoggerDelegate` | Sahiplik: kap günlüğü güçlü, günlük kabı `weak delegate` ile tutar |
+| [LifecycleLabViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/Lifecycle/LifecycleLabViewController.swift) | `LifecycleLabViewController` | Gözlenen ekranı çubuğu gizli bir `UINavigationController` içinde child VC olarak gömmek; neden kendisi günlüğe yazmıyor |
+| [DynamicCellsViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/DynamicCells/DynamicCellsViewController.swift) | `configureTableView()`, `tableView(_:cellForRowAt:)`, `toggleBook(at:)` | Klasik `UITableViewDataSource`, `enum` ile iki hücre tipi, `automaticDimension`, `performBatchUpdates(nil)` |
+| [BookSummaryCell.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/DynamicCells/BookSummaryCell.swift) | `configureLayout()`, `setExpanded(_:)`, `prepareForReuse()` | `contentView`'a üstten alta zincir, 999 öncelikli alt constraint, `numberOfLines`, gizlenen yığın elemanı |
+| [FrameBoundsViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/FrameBounds/FrameBoundsViewController.swift) | `configureGeometry()`, `apply()`, `updateReadouts()`, `viewDidLayoutSubviews()`, `scrollViewDidScroll(_:)` | bounds + center ile konumlama, transform, `bounds.origin` kaydırma, `convert(_:to:)`, `contentOffset == bounds.origin` |
+| [TableVsCollectionViewController.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/TableVsCollection/TableVsCollectionViewController.swift) | `makeTableDataSource`, `makeListDataSource`, `makeGridDataSource`, `GridItem` | Üç view, tek veri; `CellRegistration`, `SupplementaryRegistration`, benzersiz diffable kimlikleri |
+| [TableVsCollectionLayouts.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/TableVsCollection/TableVsCollectionLayouts.swift) | `list()`, `featuredSection()`, `gridSection(columnCount:)` | List configuration, `orthogonalScrollingBehavior`, `repeatingSubitem:count:` tuzağı |
+| [UIKitLabHost.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/Common/UIKitLabHost.swift) | `UIKitLabHost`, `UIKitLabBooksLoader` | Lab VC'lerini SwiftUI'a gömmek (çift navigasyon çubuğu olmadan); VC'lere servis değil `[Book]` vermek |
+| [BookShelfTests/UIKitLabs](../BookShelfTests/UIKitLabs) | `LifecycleLabTests`, `DynamicCellsTests`, `FrameBoundsTests`, `TableVsCollectionTests` | Pencere olmadan VC testi, `systemLayoutSizeFitting` ile hücre ölçümü, √2 ve `contentOffset == bounds.origin` kanıtı |
+| [UIKitLabsUITests.swift](../BookShelfUITests/UIKitLabsUITests.swift) | `testPageSheetKeepsPresenterVisibleButFullScreenTriggersDisappear` | Sunum stili farkının gerçek bir pencerede doğrulanması; günlük test raporuna ek (attachment) olarak düşer |
 
 ## Sık yapılan hatalar
 
@@ -372,6 +547,75 @@ override func viewDidLoad() { super.viewDidLoad(); cardView.layer.cornerRadius =
 override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); cardView.layer.cornerRadius = view.bounds.width / 10 }
 ```
 
+**8. `viewDidLayoutSubviews`'a bir kez yapılacak ya da layout'u yeniden bozan iş koymak**
+
+```swift
+// YANLIŞ: Her layout geçişinde yeni bir alt view ve constraint eklenir; layout her seferinde yeniden geçersiz olur.
+override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    view.addSubview(badge)
+    badge.widthAnchor.constraint(equalToConstant: view.bounds.width / 4).isActive = true
+}
+
+// DOĞRU: Kurulum viewDidLoad'da; burada yalnızca ucuz ve idempotent geometri güncellemesi.
+override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    badge.layer.cornerRadius = badge.bounds.height / 2
+}
+```
+
+**9. Sheet kapanınca `viewWillAppear`'ın çalışacağını sanmak**
+
+```swift
+// YANLIŞ: .pageSheet sunumundan dönünce alttaki ekranın viewWillAppear'ı ÇAĞRILMAZ; liste tazelenmez.
+override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); reloadNotes() }
+
+// DOĞRU: Sunulan ekran haber versin (delegate/closure); kaydırarak kapatma için presentationControllerDidDismiss.
+editor.onSave = { [weak self] in self?.reloadNotes() }
+editor.presentationController?.delegate = self
+```
+
+**10. Self-sizing hücrede zinciri kırık bırakmak ya da yüksekliği sabitlemek**
+
+```swift
+// YANLIŞ: Alt kenara bağlanmayan label → yükseklik hesaplanamaz; heightForRowAt sabit → self-sizing kapanır.
+label.topAnchor.constraint(equalTo: contentView.topAnchor).isActive = true
+func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat { 44 }
+
+// DOĞRU: Üstten alta kesintisiz zincir, heightForRowAt yok (ya da automaticDimension döndür).
+NSLayoutConstraint.activate([
+    label.topAnchor.constraint(equalTo: contentView.layoutMarginsGuide.topAnchor),
+    label.bottomAnchor.constraint(equalTo: contentView.layoutMarginsGuide.bottomAnchor),
+])
+```
+
+**11. Dönüşmüş view'ın frame'iyle çalışmak**
+
+```swift
+// YANLIŞ: transform varken frame tanımsız sayılır; sonuç beklenmedik konum/boyut olur.
+card.transform = CGAffineTransform(rotationAngle: .pi / 8)
+card.frame.origin.x += 20
+
+// DOĞRU: Konum için center, boyut için bounds.
+card.center.x += 20
+```
+
+**12. `CellRegistration`'ı cell provider'ın içinde oluşturmak**
+
+```swift
+// YANLIŞ: Her hücre için yeni kayıt → yeniden kullanım yok; iOS 15+ çalışma anında istisna.
+UICollectionViewDiffableDataSource(collectionView: collectionView) { collectionView, indexPath, id in
+    let registration = UICollectionView.CellRegistration<UICollectionViewListCell, Int> { _, _, _ in }
+    return collectionView.dequeueConfiguredReusableCell(using: registration, for: indexPath, item: id)
+}
+
+// DOĞRU: Kayıt dışarıda bir kez; kapanış onu yakalar.
+let registration = UICollectionView.CellRegistration<UICollectionViewListCell, Int> { cell, _, id in /* ... */ }
+UICollectionViewDiffableDataSource(collectionView: collectionView) { collectionView, indexPath, id in
+    collectionView.dequeueConfiguredReusableCell(using: registration, for: indexPath, item: id)
+}
+```
+
 ## Mülakatta sorulabilecekler
 
 1. **`viewDidLoad`, `viewWillAppear` ve `viewDidAppear` arasındaki fark nedir? Hangisinde ne yaparsın?**
@@ -393,10 +637,22 @@ override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); cardView.
    SwiftUI içinde UIKit: `UIViewRepresentable` / `UIViewControllerRepresentable` (`make...` bir kez, `update...` her girdi değişiminde). UIKit içinde SwiftUI: `UIHostingController(rootView:)` (hücreler için `UIHostingConfiguration`). Coordinator, UIKit'in delegate/target-action olaylarını SwiftUI tarafına (ör. `@Binding`) taşıyan yardımcı nesnedir.
 
 7. **`translatesAutoresizingMaskIntoConstraints` nedir? `frame` ile `bounds` farkı nedir?**
-   `true` iken UIKit, view'ın `frame`/autoresizing mask'ini constraint'lere çevirir; kodla constraint yazarken bunları istemediğimiz için `false` yaparız. `frame` view'ın **üst view'ın** koordinat sistemindeki konum ve boyutudur; `bounds` view'ın **kendi** koordinat sistemindeki dikdörtgenidir (origin genellikle (0,0); scroll view'da kaydırınca `bounds.origin` değişir).
+   `true` iken UIKit, view'ın `frame`/autoresizing mask'ini constraint'lere çevirir; kodla constraint yazarken bunları istemediğimiz için `false` yaparız. `frame` view'ın **üst view'ın** koordinat sistemindeki konum ve boyutudur; `bounds` view'ın **kendi** koordinat sistemindeki dikdörtgenidir (origin genellikle (0,0); scroll view'da kaydırınca `bounds.origin` değişir, `contentOffset` tam olarak budur). Ayrıntı: bölüm 10 ve frame/bounds lab'ı.
 
 8. **Swift 6'da UIKit ve concurrency: UI'ı arka plan thread'inden güncellemeyi derleyici nasıl engeller? `deinit` neden özel?**
-   UIKit tipleri `@MainActor`'dır; ana actor dışından onlara senkron erişim derleme hatasıdır. VC içinde açılan `Task` ana actor'ü miras alır. `deinit` ise varsayılan olarak nonisolated'dır; içinde `@MainActor` metot çağıramazsın, ama `Sendable` bir `Task`'ı `cancel()` edebilirsin (thread-safe). Gerekirse Swift 6.2 `isolated deinit` kullanılır.
+   UIKit tipleri `@MainActor`'dır; ana actor dışından onlara senkron erişim derleme hatasıdır. VC içinde açılan `Task` ana actor'ü miras alır. `deinit` ise varsayılan olarak nonisolated'dır; içinde `@MainActor` metot çağıramazsın, ama `Sendable` bir `Task`'ı `cancel()` edebilirsin (thread-safe). Gerekirse Swift 6.2 `isolated deinit` kullanılır (bu projede Xcode 26.3'te alt sınıflı bir hiyerarşide derleyici hatasına takıldı; bkz. bölüm 2).
+
+9. **`viewDidLayoutSubviews` ne zaman ve kaç kez çağrılır? İçine ne koyarsın?**
+   Kök view'ın `layoutSubviews`'u her çalıştığında: ilk yerleşim, döndürme, boyut değişimi, `setNeedsLayout` + bir sonraki geçiş ya da `layoutIfNeeded`, alt view eklenmesi... Sayısı belli değildir. Frame'ler artık kesin olduğu için geometriye bağlı, ucuz ve idempotent işler (köşe yarıçapı, `convert`, çizim yolu) buraya konur; kurulum, ağ isteği ya da layout'u yeniden bozan değişiklik konmaz.
+
+10. **`.pageSheet` ile `.fullScreen` sunumda alttaki ekranın yaşam döngüsü nasıl değişir?**
+    `.fullScreen`'de sunum bitince alttaki ekranın view'ı pencereden çıkarılır: `viewWillDisappear`/`viewDidDisappear`, kapanışta `viewWillAppear`/`viewDidAppear` gelir. `.pageSheet`'te alttaki view pencerede kalır; bu dört çağrının hiçbiri gelmez (iOS 26.2'de lab ve UI testiyle doğrulandı). Veri tazelemek için delegate/closure ya da `presentationControllerDidDismiss(_:)` kullanılır.
+
+11. **Self-sizing hücre nasıl yapılır? Yükseklik çalışırken değişirse ne yaparsın?**
+    `rowHeight = automaticDimension` + sıfırdan farklı `estimatedRowHeight`; alt view'lar `contentView`'da, constraint'ler üstten alta kesintisiz; çok satırlı label'da `numberOfLines = 0`. Yükseklik değişince görünen hücreyi güncelleyip `performBatchUpdates(nil)` (ya da `beginUpdates`/`endUpdates`) çağırırsın; tablo hücreyi yeniden yüklemeden yükseklikleri yeniden sorar.
+
+12. **`UITableView` mı `UICollectionView` mı?**
+    Tek sütunlu dikey liste ve hazır davranışlar (kaydırma eylemleri, düzenleme) için table. Izgara, yatay kayan bölüm, farklı yerleşimli bölümler için compositional layout'lu collection view. iOS 14+ list configuration ile collection view tablo gibi de davranır; Apple bunu WWDC20'de liste kurmanın modern yolu olarak tanıttı, ama `UITableView` deprecated değil.
 
 ## Alıştırmalar
 
@@ -408,3 +664,12 @@ override func viewDidLayoutSubviews() { super.viewDidLayoutSubviews(); cardView.
 
 3. **Sızıntıyı kendi gözünle gör.** `startObservingFavorites()` içindeki `[weak self]` kalıbını bilerek boz (ör. döngüden önce `guard let self else { return }` yaz) ve `testViewControllerIsReleasedWhileObservingAndDeinitCancelsTask` testini çalıştır. Sonra uygulamayı çalıştırıp Favoriler sekmesine birkaç kez girip çık ve Xcode'un **Debug Memory Graph** düğmesiyle kaç tane `FavoritesViewController` yaşadığına bak. En son kalıbı geri al.
    *İpucu:* Test "VC bellekten silinmeli" mesajıyla zaman aşımına uğramalı. Uygulamada sekme değiştirmek VC'yi silmez (SwiftUI `TabView` sekmeleri saklar); sızıntıyı görmek için `FavoritesView`'ı koşullu gösterip gizleyen küçük bir deneme ekranı ya da yalnızca test yeterli. Memory Graph'ta döngüyü oluşturan referans okları da görünür.
+
+4. **Sheet kapanınca tazele.** Yaşam döngüsü lab'ında `.pageSheet` ile açılan ekran kapanınca Ana'nın günlüğüne "sheet kapandı" diye bir satır düşsün; hem "Kapat" düğmesiyle hem de aşağı kaydırarak kapatınca.
+   *İpucu:* `viewWillAppear`'a güvenemezsin. "Kapat" için `LifecycleDetailViewController`'a bir `onClose` closure'ı ekle (`[weak self]` unutma); kaydırarak kapatma için sunmadan önce `modal.presentationController?.delegate = self` ve `presentationControllerDidDismiss(_:)`. İkincisinin programatik `dismiss` sonrası çağrılmadığını günlükte gör.
+
+5. **Self-sizing'i bilerek boz.** [BookSummaryCell.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/DynamicCells/BookSummaryCell.swift)'te alt constraint'i kaldır ve `DynamicCellsTests` ile uygulamayı çalıştır. Sonra önceliği 999'dan 1000'e çıkarıp konsolda `UIView-Encapsulated-Layout-Height` uyarısını ara. En son geri al.
+   *İpucu:* `testLongSummaryCellIsTallerThanShortSummaryCell` kırılmalı. Uyarı her zaman görünmeyebilir; tahmini yükseklik (`estimatedRowHeight`) ile gerçek yükseklik farkı büyüdükçe olasılık artar.
+
+6. **Izgarada sütun sayısını ekran genişliğine bağla ve bir rozet ekle.** [TableVsCollectionLayouts.swift](../BookShelf/Features/Interview/Demos/UIKitLabs/TableVsCollection/TableVsCollectionLayouts.swift)'te `gridSection(columnCount:)` zaten section provider'dan sütun sayısı alıyor; iPad'de 4, iPhone yatayda 3 sütun olacak şekilde eşikleri düzenle. Ardından "öne çıkanlar" kartlarının köşesine `NSCollectionLayoutSupplementaryItem` ile "Yeni" rozeti ekle.
+   *İpucu:* `environment.container.effectiveContentSize.width` ve `environment.traitCollection.horizontalSizeClass`. Rozet için `NSCollectionLayoutAnchor(edges: [.top, .trailing])` ve yeni bir `SupplementaryRegistration`; `TableVsCollectionTests`'e sütun sayısını doğrulayan bir test yaz.

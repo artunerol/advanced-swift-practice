@@ -1,0 +1,7 @@
+// TITLE: Tek bir any değeri generic fonksiyona vermek
+// EXPECT: compiles
+// EXPLAIN: describe<T: ReadingItem>(_ item: T) somut bir T ister. Swift 5.7'den beri (SE-0352) tek bir existential değer generic parametreye verildiğinde kutu otomatik açılır (implicit existential opening): T, kutunun içindeki gerçek tip olur (burada Novel).
+// EXPLAIN: Aynısı parametresi some ReadingItem olan fonksiyonlar için de geçerli. Ama açma işlemi yalnızca tek bir değer için yapılır, dizi için değil (sonraki soru).
+
+let boxed: any ReadingItem = Novel(title: "Aylak Adam")
+let text = describe(boxed)

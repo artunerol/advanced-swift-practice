@@ -1,0 +1,41 @@
+// Ortak tanımlar: Her quiz örneği bu dosyanın ALTINA eklenip öyle derlenir.
+// scripts/check-swift-quiz.sh de aynı birleştirmeyi yapar; quiz'deki cevaplar tahmin değil, derleyici çıktısıdır.
+
+protocol ReadingItem {
+    static var kindName: String { get }
+    var title: String { get }
+    func summary() -> String
+}
+
+struct Novel: ReadingItem {
+    static let kindName = "Roman"
+    let title: String
+    func summary() -> String { "Roman: \(title)" }
+}
+
+struct Magazine: ReadingItem {
+    static let kindName = "Dergi"
+    let title: String
+    let issue: Int
+    func summary() -> String { "Dergi: \(title) #\(issue)" }
+}
+
+// associatedtype'lı protocol. <Item>: primary associated type.
+protocol Shelf<Item> {
+    associatedtype Item
+    var items: [Item] { get }
+    mutating func add(_ item: Item)
+}
+
+struct NovelShelf: Shelf {
+    var items: [Novel] = []
+    mutating func add(_ item: Novel) { items.append(item) }
+}
+
+func describe<T: ReadingItem>(_ item: T) -> String {
+    item.summary()
+}
+
+func describeAll<T: ReadingItem>(_ items: [T]) -> [String] {
+    items.map { $0.summary() }
+}

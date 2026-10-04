@@ -1,6 +1,6 @@
 # Proje Yapısı: Hedefler, Şema ve Build Ayarları
 
-Bu belge projenin haritası. Önce burayı oku; sonraki derslerde (02 → 11) hangi dosyanın nerede durduğunu ve neden orada durduğunu bileceksin.
+Bu belge projenin haritası. Mülakata hazırlanıyorsan önce [00 Mülakat rehberi](00-mulakat-rehberi.md)'ni aç: Soruları sırayla ve "hangi dosyaya bak" yönlendirmeleriyle verir. Projenin nasıl kurulduğunu anlamak için burayı oku; sonraki derslerde (02 → 14) hangi dosyanın nerede durduğunu ve neden orada durduğunu bileceksin.
 
 ## Neden önemli?
 
@@ -30,17 +30,28 @@ Assesments/                               depo kökü
 │   │   ├── BookList/  BookDetail/        SwiftUI + async/await
 │   │   ├── Favorites/                    UIKit
 │   │   ├── ConcurrencyLab/               Task, TaskGroup, actor
-│   │   └── Fundamentals/  ISBNChecker/   struct vs class, protocol'ler, Objective-C
+│   │   ├── Interview/                    Mülakat sekmesi (aşağıda "Mülakat merkezi")
+│   │   │   ├── InterviewTopic.swift      bir sorunun modeli: cevap, ek sorular, tuzaklar, kod yönlendirmeleri, demo
+│   │   │   ├── InterviewTopic+Catalog.swift  sorular hangi sırayla görünür
+│   │   │   ├── Topics/                   soru başına bir dosya (Topic+<Ad>.swift), 16 dosya
+│   │   │   ├── Demos/                    soruların canlı demoları (SwiftBasics, Memory, UIKitLabs, Delegation, ...)
+│   │   │   └── Hub/                      merkez listesi ve konu ekranının parçaları (Cevap / Kod bölmeleri)
+│   │   ├── ReadingNotes/                 Clean Architecture örneği (aşağıda "Okuma notları")
+│   │   │   ├── Domain/                   Entities, Repositories (protokol), UseCases; UI ve depolama bilmez
+│   │   │   ├── Data/                     NotesRepository'nin 5 uygulaması: bellek, UserDefaults, dosya, Core Data, SwiftData
+│   │   │   └── Presentation/             aynı use case'ler iki sunumla: VIPER/ (UIKit) ve MVVM/ (SwiftUI)
+│   │   └── Fundamentals/  ISBNChecker/   struct vs class, protocol'ler, typealias, Objective-C (demoları Mülakat'ta)
 │   ├── ObjC/                             Objective-C sınıfları + köprü başlığı (bridging header)
 │   └── Resources/                        books.json, Assets.xcassets
 ├── Shared/                               → HEM uygulama HEM UI test hedefi (yalnızca Foundation)
 ├── BookShelfTests/                       → birim test hedefi (XCTest)
 │   └── Support/                          StubBookService, Fixtures (ortak test yardımcıları)
 ├── BookShelfUITests/                     → UI test hedefi (XCUITest)
-├── docs/                                 dersler (01 → 11)
-├── scripts/ci.sh                         derleme + test betiği (lokalde ve CI'da aynı)
+├── docs/                                 mülakat rehberi (00) ve dersler (01 → 14)
+├── scripts/ci.sh                         derleme + test + arşiv betiği (lokalde ve CI'da aynı)
+├── scripts/check-swift-quiz.sh           "derlenir mi?" quiz'ini gerçek derleyiciyle doğrular
 ├── Makefile                              make build / test / ci kısa yolları
-└── .github/workflows/ci.yml              GitHub Actions iş akışı
+└── .github/workflows/                    ci.yml (her push/PR) ve release.yml (etiketle arşiv, TestFlight şablonu)
 ```
 
 ### Proje, hedef, ürün, şema, yapılandırma
@@ -216,7 +227,7 @@ struct LocalBookService: BookServiceProtocol {          // hiçbir actor'e bağl
 
 | Argüman | Etkisi |
 |---|---|
-| `-ui-testing` | Servis gecikmesi sıfırlanır ve `UIView` animasyonları kapanır. UI testleri hızlı ve kararlı olur. |
+| `-ui-testing` | Servis gecikmesi sıfırlanır, `UIView` animasyonları kapanır ve okuma notları bellekteki depoda tutulur (her açılış temiz başlar). UI testleri hızlı ve kararlı olur. |
 | `-simulate-network-error` | Servis her istekte `BookServiceError.networkUnavailable` fırlatır. Hata ekranı test edilebilir. |
 
 ```swift
@@ -232,10 +243,44 @@ app.launch()
 
 Elle denemek için Xcode'da Product > Scheme > Edit Scheme… > Run > Arguments > "Arguments Passed On Launch" bölümüne `-simulate-network-error` ekleyebilirsin. Dikkat: Şema paylaşılan bir dosya olduğu için bu değişiklik git'te görünür. Ayrıca `shouldUseLaunchSchemeArgsEnv = YES` nedeniyle birim testleri sırasında açılan host uygulama da bu argümanla başlar. Denemeden sonra kutucuğu kapat.
 
+### Mülakat merkezi: bir soru = bir dosya
+
+Dördüncü sekme (**Mülakat**) bir soru listesidir. Her soru bir `InterviewTopic` değeridir ([InterviewTopic.swift](../BookShelf/Features/Interview/InterviewTopic.swift)): soru, 30 saniyelik cevap, ek sorular, tuzaklar, "koda bak" yönlendirmeleri ve bir demo kapanışı. Akış şöyle:
+
+```text
+InterviewHubView          InterviewTopic.all listesini bölümlere ayırıp gösterir (arama + "çalışıldı" ilerlemesi)
+  └─ InterviewTopicScreen  bir soru; üstte Cevap / Demo / Kod seçicisi
+       ├─ Cevap → Hub/TopicAnswerPane      topic.shortAnswer, followUps, pitfalls
+       ├─ Demo  → topic.demo(dependencies) Demos/ altındaki canlı örnek (kendi NavigationStack'i yok)
+       └─ Kod   → Hub/TopicCodePane        topic.codePointers: dosya → sembol → neye bakmalı
+```
+
+- **İçerik koddan ayrı değil, kodun yanında.** Her sorunun metni `Topics/Topic+<Ad>.swift` dosyasında. Merkez hiçbir sorunun ayrıntısını bilmez; yalnızca [InterviewTopic+Catalog.swift](../BookShelf/Features/Interview/InterviewTopic+Catalog.swift) içindeki `all` listesini gösterir.
+- **Yeni soru eklemek:** `Topics/` altına yeni bir dosya, `all` listesine bir satır, [Shared/AccessibilityID+Interview.swift](../Shared/AccessibilityID+Interview.swift) içine bir `TopicID` sabiti ve `Hub/InterviewTopic+HubInfo.swift` içine simge + satır ipucu.
+- **Bayatlamaya karşı testler:** [InterviewCatalogTests](../BookShelfTests/Interview/InterviewCatalogTests.swift) her konunun içerik kurallarına uyduğunu (3-6 kısa cevap maddesi, 3-5 ek soru, 2-4 tuzak, 3-6 kod yönlendirmesi) ve her "koda bak" yönlendirmesindeki dosyanın gerçekten var olup sembolü içerdiğini denetler. Bir dosya taşınır ya da bir fonksiyonun adı değişirse test kırılır.
+- Uygulamanın içinde gezmek yerine okumak istersen aynı içeriğin genişletilmiş hali [00 Mülakat rehberi](00-mulakat-rehberi.md)'nde.
+
+### Okuma notları: Clean Architecture katmanları
+
+[Features/ReadingNotes/](../BookShelf/Features/ReadingNotes/) aynı özelliği (okuma notu ekle, listele, sil) katmanlara ayrılmış haliyle gösterir. Ok yönü her zaman içeri, domain'e doğrudur:
+
+```text
+Presentation (VIPER/ UIKit, MVVM/ SwiftUI) ──▶ Domain (UseCases ──▶ Repositories/NotesRepository) ◀── Data (5 depo)
+```
+
+| Katman | Klasör | Ne bilir? |
+|---|---|---|
+| Domain | `Domain/Entities`, `Domain/Repositories`, `Domain/UseCases` | Yalnızca Foundation. `ReadingNote` (struct), `NotesRepository` (protokol), iş kuralları (`AddNoteUseCase`: kırp, boş olamaz, en fazla 280 karakter). |
+| Data | `Data/` | Domain'in protokolünü uygular: `InMemoryNotesRepository`, `UserDefaultsNotesRepository`, `FileNotesRepository`, `CoreData/`, `SwiftData/`. `NotesRepositoryFactory.make(_:)` istenen türü kurar. |
+| Presentation | `Presentation/VIPER`, `Presentation/MVVM` | Use case'leri çağırır; hangi deponun kullanıldığını bilmez. |
+
+Somut depo yalnızca bir yerde seçilir: [AppDependencies.makeForLaunch(arguments:)](../BookShelf/App/AppDependencies.swift) (composition root). Normalde `NotesStorageKind.appDefault` (SwiftData), `-ui-testing` ile bellekteki depo. Ayrıntılar: [13 Mimari](13-mimari.md) ve [14 Kalıcılık](14-kalicilik.md).
+
 ### Öğrenme sırası
 
 | # | Ders | Konu |
 |---|---|---|
+| 00 | [Mülakat rehberi](00-mulakat-rehberi.md) | 14 mülakat sorusu + 2 bonus: 30 saniyelik cevap, ek sorular, tuzaklar, koda bak, demo; 5 günlük plan |
 | 01 | Proje yapısı (bu belge) | Hedefler, şema, build ayarları |
 | 02 | [struct vs class](02-struct-vs-class.md) | Değer ve referans semantiği, kopyalama, kimlik |
 | 03 | [Protocol'ler](03-protocoller.md) | Sözleşmeler, `some` / `any`, bağımlılık tersine çevirme |
@@ -246,7 +291,10 @@ Elle denemek için Xcode'da Product > Scheme > Edit Scheme… > Run > Arguments 
 | 08 | [Objective-C](08-objective-c.md) | Köprü başlığı, `NS_SWIFT_NAME`, nullability, NSError → `throws` |
 | 09 | [XCTest](09-xctest.md) | Birim testleri, stub, async testler |
 | 10 | [XCUITest](10-xcuitest.md) | UI testleri, erişilebilirlik kimlikleri, başlatma argümanları |
-| 11 | [CI](11-ci.md) | GitHub Actions, `xcodebuild`, sonuç paketleri, kapsam |
+| 11 | [CI/CD](11-ci.md) | GitHub Actions, `xcodebuild`, sonuç paketleri, kapsam, arşiv ve imzalama |
+| 12 | [ARC ve delegate](12-arc-ve-delegate.md) | Retain cycle, `weak`/`unowned`, delegate'te sahiplik ve ömür |
+| 13 | [Mimari](13-mimari.md) | MVVM, VIPER, Clean Architecture, Dependency Inversion vs Injection |
+| 14 | [Kalıcılık](14-kalicilik.md) | UserDefaults, Keychain, dosya, Core Data, SwiftData |
 
 ### Nasıl çalıştırılır?
 
@@ -265,11 +313,13 @@ Elle denemek için Xcode'da Product > Scheme > Edit Scheme… > Run > Arguments 
 | Komut | Ne yapar? |
 |---|---|
 | `make` / `make help` | Hedefleri listeler |
+| `make quiz` | "Derlenir mi?" quiz örneklerini gerçek derleyiciyle doğrular (simülatör gerekmez) |
 | `make build` | Uygulamayı ve test paketlerini derler |
 | `make unit` | Derler ve birim testlerini çalıştırır |
 | `make ui` | Derler ve UI testlerini çalıştırır |
 | `make test` | Derler, birim ve UI testlerini çalıştırır |
-| `make ci` | CI'daki akışın aynısı, sonunda kod kapsamı özeti |
+| `make ci` | CI'daki akışın aynısı (quiz + build + unit + ui), sonunda kod kapsamı özeti |
+| `make archive` | İmzasız Release arşivi (`build/archive/`) |
 | `make clean` | `build/` klasörünü siler |
 | `make open` | Projeyi Xcode'da açar |
 
@@ -284,7 +334,11 @@ Simülatör otomatik seçilir: seçili Xcode'un SDK'sıyla uyumlu en yeni iOS s�
 | [BookShelfApp.swift](../BookShelf/App/BookShelfApp.swift) | `BookShelfApp` (`@main`): `init()` içinde başlatma argümanlarını okur, `-ui-testing`'de animasyonları kapatır |
 | [AppDependencies.swift](../BookShelf/App/AppDependencies.swift) | `AppDependencies.makeForLaunch(arguments:)`: argümana göre servisi kurar |
 | [RootTabView.swift](../BookShelf/App/RootTabView.swift) | `RootTabView`: dört sekme ve her sekmenin öğrettiği konu |
-| [Features/](../BookShelf/Features/) | Her ekran kendi klasöründe: [BookList](../BookShelf/Features/BookList/), [BookDetail](../BookShelf/Features/BookDetail/), [Favorites](../BookShelf/Features/Favorites/), [ConcurrencyLab](../BookShelf/Features/ConcurrencyLab/), [Fundamentals](../BookShelf/Features/Fundamentals/), [ISBNChecker](../BookShelf/Features/ISBNChecker/) |
+| [Features/](../BookShelf/Features/) | Her ekran kendi klasöründe: [BookList](../BookShelf/Features/BookList/), [BookDetail](../BookShelf/Features/BookDetail/), [Favorites](../BookShelf/Features/Favorites/), [ConcurrencyLab](../BookShelf/Features/ConcurrencyLab/), [Interview](../BookShelf/Features/Interview/), [ReadingNotes](../BookShelf/Features/ReadingNotes/), [Fundamentals](../BookShelf/Features/Fundamentals/), [ISBNChecker](../BookShelf/Features/ISBNChecker/) |
+| [InterviewTopic.swift](../BookShelf/Features/Interview/InterviewTopic.swift), [InterviewTopic+Catalog.swift](../BookShelf/Features/Interview/InterviewTopic+Catalog.swift) | `InterviewTopic` modeli ve `InterviewTopic.all`: Mülakat sekmesindeki soruların sırası |
+| [Interview/Topics/](../BookShelf/Features/Interview/Topics/) | Soru başına bir dosya; uygulamadaki **Cevap** ve **Kod** bölmelerinin metni burada |
+| [ReadingNotes/Domain/](../BookShelf/Features/ReadingNotes/Domain/) | `NotesRepository` protokolü ve use case'ler: Clean Architecture'da bağımlılıkların yöneldiği katman |
+| [NotesRepositoryFactory.swift](../BookShelf/Features/ReadingNotes/Data/NotesRepositoryFactory.swift) | `NotesStorageKind` ve `NotesRepositoryFactory.make(_:)`: beş depodan birini kurar |
 | [LaunchArgument.swift](../Shared/LaunchArgument.swift) | `LaunchArgument`: iki hedefte ortak sabitler |
 | [AccessibilityID.swift](../Shared/AccessibilityID.swift) | `AccessibilityID`. Her özellik kendi `AccessibilityID+<Özellik>.swift` dosyasında genişletir. |
 | [BookShelf-Bridging-Header.h](../BookShelf/ObjC/BookShelf-Bridging-Header.h) | Köprü başlığı: `BKISBNValidator.h` ve `BKReadingTimeEstimator.h` |
@@ -412,3 +466,7 @@ Uygulama bu argümanla açıldığında 1 ve 2 numaralı kitaplar favori olarak 
 **3. İzolasyon varsayılanlarını deneyerek karşılaştır**
 Uygulama hedefinde geçici olarak `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` ayarla ve derle. Hangi uyarı veya hataların çıktığını, `LocalBookService`'in hangi actor'e bağlı sayıldığını not et. Sonra ayarı geri al.
 *İpucu:* Build Settings'te "Default Actor Isolation" diye ara. `LocalBookService.fetchBooks()` içine bir breakpoint koy ve iki ayarla çalıştır. Debug Navigator'da (⌘7) durulan thread'e bak: ana thread "Thread 1" olarak, `com.apple.main-thread` etiketiyle görünür. (`Thread.isMainThread` async bir fonksiyonun içinde doğrudan kullanılamaz; Swift 6'da derleme hatası verir.) `LocalBookService`'in belgesindeki "global concurrent executor" açıklamasının hangi ayarda geçerli olduğunu düşün. Deneyden sonra `git diff` ile pbxproj'un eski haline döndüğünü kontrol et.
+
+**4. Mülakat merkezine bir soru ekle**
+"Swift'te `final` ne işe yarar?" sorusunu yeni bir konu olarak ekle: Kısa cevap, en az 3 ek soru, 2 tuzak ve projede gerçekten var olan 3 "koda bak" yönlendirmesi olsun. Demo olarak şimdilik kısa bir `Text` yeter.
+*İpucu:* Yukarıdaki "Mülakat merkezi" bölümündeki dört adımı izle. `make unit` çalıştır: `InterviewCatalogTests` içerik kurallarını ve yönlendirmelerdeki dosya/sembollerin gerçekten var olduğunu denetler. Bilerek yanlış bir sembol adı yaz ve testin hangi mesajla kırıldığına bak.

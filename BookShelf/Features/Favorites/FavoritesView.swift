@@ -23,7 +23,7 @@ import UIKit
 /// `updateUIViewController` çağrılır.
 ///
 /// `UIViewControllerRepresentable` bir `@MainActor` protokolüdür; bu yüzden bu struct da (ve metotları) ana actor'e bağlıdır.
-struct FavoritesView: UIViewControllerRepresentable {
+struct FavoritesView : UIViewControllerRepresentable {
     let dependencies: AppDependencies
 
     /// UIKit nesnesini oluşturur. SwiftUI bunu view'ın ömrü boyunca **bir kez** çağırır.

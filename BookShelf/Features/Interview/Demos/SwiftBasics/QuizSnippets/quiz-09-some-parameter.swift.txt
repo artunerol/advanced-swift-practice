@@ -1,0 +1,11 @@
+// TITLE: some parametreyi iki farklı tiple çağırmak
+// EXPECT: compiles
+// EXPLAIN: Parametredeki some, generic'in kısa yazımıdır (SE-0341): func printSummary<T: ReadingItem>(_ item: T) ile aynı. Tipi ÇAĞIRAN seçer; her çağrı farklı bir somut tip verebilir. Dönüş tipindeki some ise tam tersi: Tipi fonksiyon seçer ve hep aynıdır.
+// EXPLAIN: Fark: Bu gizli generic parametreye isim veremediğin için "iki parametre aynı tip olsun" ya da "aynı tipi döndür" diyemezsin; bunun için <T> yazmalısın.
+
+func printSummary(_ item: some ReadingItem) {
+    print(item.summary())
+}
+
+printSummary(Novel(title: "Aylak Adam"))
+printSummary(Magazine(title: "Varlık", issue: 1))

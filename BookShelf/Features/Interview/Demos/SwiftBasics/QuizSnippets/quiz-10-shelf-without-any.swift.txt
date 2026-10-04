@@ -1,0 +1,6 @@
+// TITLE: associatedtype'lı protocol'ü tip olarak yazmak
+// EXPECT: warning: use of protocol 'Shelf' as a type must be written 'any Shelf'; this will be an error in a future Swift language mode
+// EXPLAIN: Eski klasik cevap: "associatedtype'lı protocol yalnızca generic kısıt olabilir." Bu Swift 5.6 ve öncesi için doğruydu. Swift 5.7'den beri (SE-0309) her protocol existential olarak kullanılabilir; yazılması gereken any Shelf.
+// EXPLAIN: Bu derleyici (Swift 6.2) any'siz hali derler ama uyarır. Asıl kısıt başka yerde: any Shelf üzerinde Item ALAN metotları çağıramazsın (sonraki soru).
+
+let shelf: Shelf = NovelShelf()

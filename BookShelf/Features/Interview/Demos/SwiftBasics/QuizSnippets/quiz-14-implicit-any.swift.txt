@@ -1,0 +1,6 @@
+// TITLE: any yazmadan (associatedtype'sız protocol)
+// EXPECT: compiles
+// EXPLAIN: Swift 6 dil modunda, Self ya da associatedtype gereksinimi OLMAYAN bir protocol için any yazmak hâlâ zorunlu değil: Bu satır uyarısız derlenir ve let item: any ReadingItem ile birebir aynıdır.
+// EXPLAIN: Yine de any yazmak iyi bir alışkanlıktır: Okuyan, bunun bir kutu olduğunu ve bir bedeli olduğunu görür. Bunu zorunlu kılmak için ExistentialAny ayarı açılabilir (sonraki soru).
+
+let item: ReadingItem = Novel(title: "Aylak Adam")

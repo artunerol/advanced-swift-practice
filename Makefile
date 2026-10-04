@@ -15,7 +15,7 @@ CI := ./scripts/ci.sh
 .DEFAULT_GOAL := help
 
 # Bu hedefler dosya adı değil, komut adıdır. Aynı adda bir dosya/klasör olsa bile (ör. build/) hedef çalışır.
-.PHONY: help build test unit ui ci clean open
+.PHONY: help quiz build test unit ui ci archive clean open
 
 # "make -j" ile çalıştırılsa bile hedefler sırayla koşsun: birim ve UI testleri aynı simülatörü ve
 # aynı build/ klasörünü kullanır, paralel çalışırlarsa birbirlerini bozarlar.
@@ -24,7 +24,10 @@ CI := ./scripts/ci.sh
 help: ## Bu yardımı gösterir
 	@echo "Kullanım: make <hedef>"
 	@echo ""
-	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-7s %s\n", $$1, $$2}'
+	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  make %-8s %s\n", $$1, $$2}'
+
+quiz: ## Swift quiz örneklerini derleyiciyle doğrular (hızlı, simülatör gerekmez)
+	$(CI) quiz
 
 build: ## Uygulamayı ve test paketlerini derler (build-for-testing)
 	$(CI) build
@@ -39,8 +42,13 @@ ui: build ## Derler ve UI testlerini (XCUITest) çalıştırır
 
 test: unit ui ## Derler, birim + UI testlerini çalıştırır
 
-ci: ## CI'daki akışın aynısı: build + unit + ui + kod kapsamı özeti
+ci: ## CI'daki akışın aynısı: quiz + build + unit + ui + kod kapsamı özeti
 	$(CI) all
+
+# CD'nin (release.yml) ilk işinin aynısı. Sürüm numaralarını komut satırından verebilirsin:
+#   make archive BUILD_NUMBER=42 MARKETING_VERSION=1.2.0
+archive: ## İmzasız Release arşivi (.xcarchive + zip) üretir, build/archive/ altına
+	$(CI) archive
 
 clean: ## build/ klasörünü (DerivedData + test sonuçları) siler
 	$(CI) clean

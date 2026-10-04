@@ -1,0 +1,7 @@
+// TITLE: Aynı satır, ExistentialAny açıkken
+// FLAGS: -enable-upcoming-feature ExistentialAny
+// EXPECT: warning: use of protocol 'ReadingItem' as a type must be written 'any ReadingItem'; this will be an error in a future Swift language mode
+// EXPLAIN: ExistentialAny bir "upcoming feature": gelecekteki bir dil modunun kuralını şimdiden açar. Açıkken any'siz yazılan her existential için uyarı gelir. Bu derleyicide (Swift 6.2) bu bir UYARI, hata değil: Kod yine derlenir.
+// EXPLAIN: Xcode'da Build Settings'te SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES ile, Swift Package'ta .enableUpcomingFeature("ExistentialAny") ile açılır.
+
+let item: ReadingItem = Novel(title: "Aylak Adam")

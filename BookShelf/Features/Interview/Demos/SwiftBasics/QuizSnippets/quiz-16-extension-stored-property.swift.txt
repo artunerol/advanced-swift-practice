@@ -1,0 +1,8 @@
+// TITLE: Extension ile saklanan özellik eklemek
+// EXPECT: error: extensions must not contain stored properties
+// EXPLAIN: Bir tipin bellekteki düzeni (hangi alanlar, kaç bayt) tipin kendi tanımında sabitlenir. Başka bir dosyadaki, hatta başka bir modüldeki extension bu düzeni değiştiremez. Extension'lar computed property, metot, init, iç içe tip ve protocol uygunluğu ekleyebilir; saklanan özellik ekleyemez.
+// EXPLAIN: Protocol extension'ı için de aynısı geçerli. Gerekirse protocol'e bir { get } gereksinimi koyar, saklamayı uyan tipe bırakırsın.
+
+extension Novel {
+    var rating: Int = 0
+}

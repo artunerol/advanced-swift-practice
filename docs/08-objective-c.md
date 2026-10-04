@@ -331,7 +331,7 @@ ObjC'nin göremedikleri (`@objc` yazarsan derleme hatası alırsın):
 | [ReadingPace.swift](../BookShelf/ObjC/ReadingPace.swift) | `ReadingPace` (`BKReadingPace`) | `@objc(Ad)`, `NSObject` şartı, `@objc static let` → sınıf property'si, ObjC'ye kapalı `typicalRange`, `private init` |
 | [BookShelf-Bridging-Header.h](../BookShelf/ObjC/BookShelf-Bridging-Header.h) | — | ObjC → Swift köprüsü |
 | [ISBNCheckOutcome.swift](../BookShelf/Features/ISBNChecker/ISBNCheckOutcome.swift) | `ISBNCheckOutcome.evaluate(_:)`, `hint(for:normalized:)` | `try` ile ObjC çağırmak, `catch let error as BKISBNValidatorError`, `switch error.code` + `@unknown default` |
-| [ISBNCheckerView.swift](../BookShelf/Features/ISBNChecker/ISBNCheckerView.swift) | `ISBNCheckerView` | ObjC mantığını kullanan SwiftUI ekranı (Temeller sekmesi → ISBN) |
+| [ISBNCheckerView.swift](../BookShelf/Features/ISBNChecker/ISBNCheckerView.swift) | `ISBNCheckerView` | ObjC mantığını kullanan SwiftUI ekranı (Mülakat sekmesi → Objective-C sorusu → Demo) |
 | [ObjCISBNValidatorTests.swift](../BookShelfTests/ObjC/ObjCISBNValidatorTests.swift) | `ObjCISBNValidatorTests` | ObjC kodunu Swift'ten XCTest ile test etmek; tipli hata, domain ve code |
 | [ObjCReadingTimeEstimatorTests.swift](../BookShelfTests/ObjC/ObjCReadingTimeEstimatorTests.swift) | `ObjCReadingTimeEstimatorTests` | Biçimlendirme kuralları; `NSClassFromString("BKReadingPace")`, `class_getClassMethod` ile runtime görünürlüğü |
 | [ObjCSendableInteropTests.swift](../BookShelfTests/ObjC/ObjCSendableInteropTests.swift) | `ObjCSendableInteropTests` | `NS_SWIFT_SENDABLE`'ın derleme anı kanıtı |

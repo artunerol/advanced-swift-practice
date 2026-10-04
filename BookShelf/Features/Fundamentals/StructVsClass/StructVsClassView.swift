@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// Struct ile class farkını üç küçük deneyle gösteren ekran: Kopyalama, Copy-on-write ve ARC.
+/// Struct ile class farkını dört küçük deneyle gösteren ekran: Kopyalama, Copy-on-write, ARC ve Bellek.
 ///
-/// Tüm mantık saf Swift tiplerinde (`CopySemanticsDemo`, `CopyOnWriteDemo`, `RetainCycleDemo`); bu view sadece
-/// onları gösterip düğmelere bağlıyor. Böylece mantık, SwiftUI olmadan birim testlerle doğrulanabiliyor.
+/// Tüm mantık saf Swift tiplerinde (`CopySemanticsDemo`, `CopyOnWriteDemo`, `RetainCycleDemo`, `MemoryLayoutDemo`);
+/// bu view sadece onları gösterip düğmelere bağlıyor. Böylece mantık, SwiftUI olmadan birim testlerle doğrulanabiliyor.
 ///
 /// Kendi `NavigationStack`'ini içermez; Mülakat merkezindeki konu ekranının (`InterviewTopicScreen`) içinde gösterilir.
 struct StructVsClassView: View {
     /// Ekranın üstündeki bölüm seçicinin seçenekleri. Etiketler `Shared/` altındaki sabitlerden gelir,
     /// böylece UI testleri de birebir aynı metinleri kullanır.
     enum Experiment: CaseIterable, Identifiable {
-        case copying, copyOnWrite, arc
+        case copying, copyOnWrite, arc, memory
 
         var id: Self { self }
 
@@ -19,6 +19,7 @@ struct StructVsClassView: View {
             case .copying: AccessibilityID.Fundamentals.StructVsClass.copyingSegment
             case .copyOnWrite: AccessibilityID.Fundamentals.StructVsClass.copyOnWriteSegment
             case .arc: AccessibilityID.Fundamentals.StructVsClass.arcSegment
+            case .memory: AccessibilityID.Fundamentals.StructVsClass.memorySegment
             }
         }
     }
@@ -48,8 +49,11 @@ struct StructVsClassView: View {
             case .copying: copyingSections
             case .copyOnWrite: copyOnWriteSections
             case .arc: arcSections
+            // Ayrı bir view: kendi durumunu (ölçülen adresler) kendisi tutar.
+            case .memory: MemoryExperimentSections()
             }
         }
+        .accessibilityIdentifier(ID.list)
         .navigationTitle("Struct vs Class")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

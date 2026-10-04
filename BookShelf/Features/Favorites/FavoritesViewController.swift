@@ -32,6 +32,11 @@ final class FavoritesViewController: UIViewController {
         case main
     }
 
+    /// Uzun generic tip adlarına kısa takma adlar (typealias). Yeni bir tip OLUŞTURMAZLAR: Derleyici için `Snapshot`
+    /// ile `NSDiffableDataSourceSnapshot<Section, Book>` birebir aynı tiptir. Bölüm ya da öğe tipi değişirse tek yerden güncellenir.
+    typealias Snapshot = NSDiffableDataSourceSnapshot<Section, Book>
+    typealias DataSource = UITableViewDiffableDataSource<Section, Book>
+
     private static let cellReuseIdentifier = "FavoriteBookCell"
 
     // MARK: - Bağımlılıklar ve durum
@@ -235,7 +240,7 @@ final class FavoritesViewController: UIViewController {
 
         // Snapshot: tablonun olması gereken hali. Her seferinde sıfırdan kurmak ucuzdur ve hatasızdır;
         // farkı (diff) data source hesaplar.
-        var snapshot = NSDiffableDataSourceSnapshot<Section, Book>()
+        var snapshot = Snapshot()
         snapshot.appendSections([.main])
         snapshot.appendItems(newState.books, toSection: .main)
         // Ekranda değilken (ör. testlerde veya ilk kurulumda) animasyona gerek yok.
@@ -399,8 +404,8 @@ final class FavoritesViewController: UIViewController {
     ///
     /// Bilerek `static`: Closure içinde `self` kullanmak mümkün bile olmasın. Data source'u VC güçlü tutuyor;
     /// closure da VC'yi güçlü yakalasaydı VC → dataSource → closure → VC döngüsü (retain cycle) oluşurdu.
-    private static func makeDataSource(for tableView: UITableView) -> UITableViewDiffableDataSource<Section, Book> {
-        UITableViewDiffableDataSource(tableView: tableView) { tableView, indexPath, book in
+    private static func makeDataSource(for tableView: UITableView) -> DataSource {
+        DataSource(tableView: tableView) { tableView, indexPath, book in
             // Hücre yeniden kullanımı (cell reuse): 1000 satırlık bir tablo için 1000 hücre oluşturulmaz.
             // Ekrana sığan kadar hücre oluşturulur; kaydırınca ekrandan çıkan hücre, yeni giren satır için
             // geri dönüştürülür. Bu yüzden hücreyi her seferinde BAŞTAN yapılandırırız: önceki kitabın

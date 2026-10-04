@@ -1,0 +1,6 @@
+// TITLE: any Hashable'lardan bir Set
+// EXPECT: error: type 'any Hashable' cannot conform to 'Hashable'
+// EXPLAIN: Set'in elemanı Hashable'a UYAN bir tip olmalı. any Hashable kutusunun kendisi Hashable'a uymaz (bir existential, kendi protocol'üne otomatik olarak uymaz); bu yüzden Set<any Hashable> kurulamaz.
+// EXPLAIN: Standart kütüphanenin çözümü tip silen (type-erasing) bir struct: Set<AnyHashable> derlenir. AnyHashable'ın kendisi Hashable'a uyar ve farklı tiplerdeki değerleri sarar.
+
+let tags: Set<any Hashable> = [1, "roman", 3.5]

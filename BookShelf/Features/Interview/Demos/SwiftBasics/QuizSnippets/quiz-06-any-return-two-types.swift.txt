@@ -1,0 +1,11 @@
+// TITLE: any dönüş tipiyle iki farklı tip döndürmek
+// EXPECT: compiles
+// EXPLAIN: any ReadingItem bir kutu: içine çalışma anında Novel da Magazine da konabilir. Esneklik kazanırsın; karşılığında çağıran somut tipi bilmez, çağrılar dinamik olur ve değer kutunun 3 kelimelik tamponuna sığmazsa heap'e taşınır.
+
+func featured(weekend: Bool) -> any ReadingItem {
+    if weekend {
+        return Novel(title: "Aylak Adam")
+    } else {
+        return Magazine(title: "Varlık", issue: 1)
+    }
+}

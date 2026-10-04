@@ -9,7 +9,7 @@ Swift'te yazdığın her tip için ilk karar şudur: `struct` mı, `class` mı? 
 - Swift 6'nın veri yarışı (data race) güvenliği büyük ölçüde değer semantiğine dayanır: Kopyalanan bir değeri iki thread paylaşamaz.
 - Mülakatlarda "struct ile class farkı", "copy-on-write", "retain cycle", "weak ile unowned farkı" soruları neredeyse her zaman gelir.
 
-Uygulamada **Temeller → Struct vs Class** ekranındaki üç deney (Kopyalama, CoW, ARC) bu dersin canlı halidir.
+Uygulamada **Mülakat** sekmesindeki "Struct ile class arasındaki fark nedir?" konusu bu dersin canlı halidir: **Cevap** bölümünde 30 saniyelik mülakat cevabı ve ek sorular, **Demo** bölümünde dört deney (Kopyalama, CoW, ARC, Bellek), **Kod** bölümünde bakman gereken dosyalar var.
 
 ## Temel kavramlar
 
@@ -80,12 +80,58 @@ final class BookmarkReference {
 
 ### 4. Stack mı heap mi? Semantik önemli, depolama bir uygulama detayı
 
-Sık duyulan "struct stack'te, class heap'te durur" cümlesi **yarı doğrudur**:
+Mülakatta "struct ile class farkı" sorusu çoğu zaman buraya kayar. Sık duyulan "struct stack'te, class heap'te durur" cümlesi **yarı doğrudur**. Doğru cevabın iskeleti şu:
 
-- Bir struct değeri **tanımlandığı yerde, satır içinde (inline)** saklanır. Yerel bir değişkense genelde stack'te (ya da register'larda) durur. Ama bir class'ın alanıysa o nesneyle birlikte heap'tedir; bir `Array`'in elemanıysa dizinin heap'teki deposundadır; kaçan (escaping) bir closure'ın yakaladığı `var` ise heap'te bir kutuya alınır. `any P` gibi bir existential kutuya sığmayan büyük bir değer de heap'e taşınır.
-- Class örnekleri **heap'te** ayrılır ve referans sayılır. (Optimize edici, fonksiyon dışına hiç kaçmayan bazı nesneleri stack'e alabilir.)
+**1) Değer tipi, bulunduğu yerde satır içi (inline) saklanır.** Nerede duracağı, onu kimin tuttuğuna bağlıdır:
 
-Swift sana depolama yeri hakkında hiçbir **garanti** vermez; verdiği garanti **semantiktir**: Değer tipi kopyalanır, referans tipi paylaşılır. Karar verirken "nerede saklanır?" diye değil, "bu veri paylaşılmalı mı, kimliği var mı?" diye sor.
+| Değer nerede? | Nerede saklanır? |
+|---|---|
+| Yerel bir değişken (kaçmıyorsa) | Genelde stack'te ya da doğrudan register'larda |
+| Bir class'ın saklanan özelliği | O nesnenin içinde, yani **heap**'te |
+| Bir `Array`'in elemanı | Dizinin heap'teki deposunda (`Array` değişkeninin kendisi tek bir referanstır, 8 bayt) |
+| Kaçan (escaping) bir closure'ın yakaladığı `var` | Heap'te ayrılan bir kutuda (closure'dan uzun yaşayabilsin diye) |
+| `any P` existential'ı içinde | Değer 3 kelimelik (64-bit'te 24 bayt) satır içi tampona sığıyorsa orada, sığmıyorsa heap'te bir kutuda |
+
+**2) Class örneği heap'te ayrılır ve referans sayılır.** Değişkende yalnızca adres durur (8 bayt). Optimize edici, fonksiyondan hiç kaçmayan bazı nesneleri stack'e alabilir; bu bir garanti değil, optimizasyondur.
+
+**3) Class'ı daha pahalı yapan şeyler:** heap'te yer ayırma (ve serbest bırakma), her kopyalama ve bırakmada **atomik** retain/release (ARC), nesneye her erişimde bir dolaylılık (pointer'ı takip etmek) ve `final` değilse metot çağrılarının dinamik dispatch'i. Struct'ın kopyalanması ise çoğu zaman sadece birkaç baytı taşımaktır; içinde class referansları varsa her kopya onlar için de retain/release yapar.
+
+**4) Swift sana depolama yeri hakkında hiçbir garanti vermez; verdiği garanti semantiktir:** Değer tipi kopyalanır, referans tipi paylaşılır. Karar verirken "nerede saklanır?" diye değil, "bu veri paylaşılmalı mı, kimliği var mı?" diye sor.
+
+#### Bellek deneyi: MemoryLayout ve adresler
+
+`MemoryLayout<T>` bir tipin **satır içi** boyutunu söyler: `size` (bir değerin kapladığı bayt), `stride` (dizide ardışık iki eleman arasındaki mesafe; hizalama yüzünden `size`'dan büyük olabilir) ve `alignment`. Uygulamadaki **Bellek** deneyi ve [FundamentalsMemoryLayoutTests](../BookShelfTests/Fundamentals/FundamentalsMemoryLayoutTests.swift) bu değerleri gerçekten ölçer (64-bit):
+
+| Tip | size | stride | Neden? |
+|---|---|---|---|
+| `BookmarkValue` (struct, tek `Int`) | 8 | 8 | Değerin kendisi; ek başlık yok |
+| `BookmarkPosition` (`Int` + `Bool`) | 9 | 16 | Sonraki `Int` 8'in katında başlamalı (hizalama payı) |
+| `BookmarkReference` (class) | 8 | 8 | Yalnızca adres; nesne ne kadar büyük olursa olsun |
+| `BookmarkReference?` | 8 | 8 | `nil`, boş adresle (0) temsil edilir |
+| `[Int]` | 8 | 8 | Tek bir referans; elemanlar heap'teki depoda |
+| `String` | 16 | 16 | Kısa metinler satır içi, uzunlar heap'teki bir depoda |
+| `any ReadingItem` | 40 | 40 | 3 kelimelik tampon + tip bilgisi + 1 witness table (`Sendable` marker protocol'dür, tablo eklemez) |
+| `any PageTracking` (`AnyObject` protocol'ü) | 16 | 16 | Referans + witness table |
+
+Deney ayrıca adresleri karşılaştırır ([MemoryLayoutDemo.swift](../BookShelf/Features/Fundamentals/StructVsClass/MemoryLayoutDemo.swift)):
+
+```swift
+// struct: iki ayrı değer, iki ayrı adres
+var original = BookmarkValue(page: 10)
+var copy = original
+withUnsafeMutablePointer(to: &original) { a in
+    withUnsafeMutablePointer(to: &copy) { b in a != b }      // true
+}
+
+// class: kopyalanan şey adres; iki değişken aynı nesneyi gösterir
+let reference = BookmarkReference(page: 10)
+let alias = reference
+Unmanaged.passUnretained(reference).toOpaque() == Unmanaged.passUnretained(alias).toOpaque()   // true
+```
+
+`Unmanaged.passUnretained(_:)` referans sayacına dokunmadan nesnenin adresini verir; `ObjectIdentifier(nesne)` da aynı adresten türetilir. Ama "aynı nesne mi?" sorusunun günlük koddaki cevabı her zaman `===`'dir. Adreslerin kendisi her çalıştırmada değişir; testler bu yüzden yalnızca "aynı mı, farklı mı?" sonucunu doğrular. (Simülatörde iki yerel struct kopyasının genelde yan yana, 8 bayt arayla durduğunu, class nesnelerinin ise bambaşka bir bölgede olduğunu görürsün. Bu bir gözlem, garanti değil.)
+
+**Mülakatçı "peki stack mi heap mi?" diye sorarsa** şöyle cevap verebilirsin: "Struct değeri bulunduğu yerde saklanır: yerel değişkense genelde stack'te, ama bir class'ın alanıysa ya da bir dizinin elemanıysa heap'te. Class örnekleri heap'te ayrılır ve ARC ile sayılır; bu yüzden class'ın ayırma, atomik referans sayma ve dolaylı erişim maliyeti var. Ama asıl fark depolama değil semantik: struct kopyalanır, class paylaşılır."
 
 ### 5. Copy-on-write (CoW)
 
@@ -232,12 +278,17 @@ func startReading() {
 | [Bookmark.swift](../BookShelf/Features/Fundamentals/StructVsClass/Bookmark.swift) | `CopySemanticsDemo.advanceCopies(by:)`, `classesAreIdentical`, `pageAfterAdvancingThroughLet(startPage:by:)` | `var copy = original` sonrası davranış, `===`, `let` ile class |
 | [PageHistory.swift](../BookShelf/Features/Fundamentals/StructVsClass/PageHistory.swift) | `PageHistory.record(_:)`, `sharesStorage(with:)`, `CopyOnWriteDemo` | Elle yazılmış copy-on-write, `isKnownUniquelyReferenced` |
 | [RetainCycleDemo.swift](../BookShelf/Features/Fundamentals/StructVsClass/RetainCycleDemo.swift) | `LibraryMember`, `LibraryCard`, `ReferenceStrength`, `RetainCycleDemo.run(_:)` | ARC, `deinit`, strong/weak/unowned, retain cycle |
+| [MemoryLayoutDemo.swift](../BookShelf/Features/Fundamentals/StructVsClass/MemoryLayoutDemo.swift) | `MemoryLayoutDemo`, `MemoryAddressDemo`, `PageTracking` | `MemoryLayout` boyutları, struct kopyalarının farklı, aynı nesneye referansların aynı adresi |
 | [StructVsClassView.swift](../BookShelf/Features/Fundamentals/StructVsClass/StructVsClassView.swift) | `StructVsClassView` | Deneylerin SwiftUI ekranı, `@State` ile struct durumu |
+| [MemoryExperimentSections.swift](../BookShelf/Features/Fundamentals/StructVsClass/MemoryExperimentSections.swift) | `MemoryExperimentSections` | "Bellek" deneyinin ekranı |
+| [Topic+StructVsClass.swift](../BookShelf/Features/Interview/Topics/Topic+StructVsClass.swift) | `InterviewTopic.structVsClass` | Mülakat cevabı, ek sorular, tuzaklar ve kod yönlendirmeleri |
 | [Book.swift](../BookShelf/Core/Models/Book.swift) | `Book` | Değişmez, `Sendable` bir model struct'ı |
 | [AppDependencies.swift](../BookShelf/App/AppDependencies.swift) | `AppDependencies` | Referans (actor) taşıyan struct: kopyalar aynı actor'ü paylaşır |
 | [FavoritesStore.swift](../BookShelf/Core/Stores/FavoritesStore.swift) | `FavoritesStore.changes()` | Actor = referans tipi; closure'da `[weak self]` |
 | [FundamentalsStructVsClassTests.swift](../BookShelfTests/Fundamentals/FundamentalsStructVsClassTests.swift) | `FundamentalsStructVsClassTests` | Değer/referans semantiği ve CoW testleri |
 | [FundamentalsRetainCycleTests.swift](../BookShelfTests/Fundamentals/FundamentalsRetainCycleTests.swift) | `FundamentalsRetainCycleTests` | Sızıntı var/yok, `weak`'in `nil` olması |
+| [FundamentalsMemoryLayoutTests.swift](../BookShelfTests/Fundamentals/FundamentalsMemoryLayoutTests.swift) | `FundamentalsMemoryLayoutTests` | Boyutlar kelime (word) cinsinden, adres karşılaştırmaları |
+| [SwiftBasicsUITests.swift](../BookShelfUITests/SwiftBasicsUITests.swift) | `testMemoryExperimentShowsCopiesAtDifferentAddressesAndSharedReferences` | Bellek deneyinin UI testi |
 
 ## Sık yapılan hatalar
 
@@ -312,6 +363,18 @@ final class Cache: Sendable { let limit = 10 }
 actor MutableCache { var items: [String: Data] = [:] }
 ```
 
+**7. Bir değerin adresini `withUnsafePointer` kapsamının dışına taşımak.**
+
+```swift
+// YANLIŞ: İşaretçi yalnızca closure içinde geçerli. Dışarıda kullanmak tanımsız davranıştır (undefined behavior).
+var bookmark = BookmarkValue(page: 1)
+let pointer = withUnsafeMutablePointer(to: &bookmark) { $0 }
+pointer.pointee.page = 2
+
+// DOĞRU: İşaretçiyle yapacağın her şeyi closure'ın içinde yap; dışarıya yalnızca sonucu (ör. sayısal adresi) çıkar.
+let address = withUnsafeMutablePointer(to: &bookmark) { UInt(bitPattern: $0) }
+```
+
 ## Mülakatta sorulabilecekler
 
 **1. Struct ile class arasındaki temel farklar neler?**
@@ -321,7 +384,7 @@ Struct değer tipidir (kopyalanır), class referans tipidir (paylaşılır). Cla
 Kopyalamayı, değişiklik anına kadar erteleyen tekniktir: Kopyalar depoyu paylaşır, biri değişince `isKnownUniquelyReferenced` ile benzersizlik kontrol edilip gerekirse depo kopyalanır. `Array`, `String`, `Dictionary`, `Set` böyle çalışır. Senin yazdığın sıradan bir struct CoW değildir; alanları doğrudan kopyalanır. CoW'u istersen elle uygularsın.
 
 **3. Struct'lar stack'te mi tutulur?**
-Her zaman değil. Struct tanımlandığı yerde satır içi saklanır: yerel değişkense genelde stack'te, bir class'ın alanıysa heap'te, bir dizinin elemanıysa dizinin deposunda. Kaçan closure'ın yakaladığı `var`'lar da heap'e kutulanır. Swift'in garantisi depolama değil semantiktir.
+Her zaman değil. Struct bulunduğu yerde satır içi saklanır: yerel değişkense genelde stack'te ya da register'da, bir class'ın alanıysa o nesnenin içinde (heap), bir dizinin elemanıysa dizinin heap'teki deposunda. Kaçan closure'ın yakaladığı `var`'lar heap'e kutulanır; `any P` kutusunun 3 kelimelik tamponuna sığmayan değerler de heap'e konur. Swift'in garantisi depolama değil semantiktir.
 
 **4. `weak` ile `unowned` farkı nedir?**
 İkisi de sayacı artırmaz. `weak` Optional'dır ve nesne yok olunca otomatik `nil` olur. `unowned` `nil` olmaz; yok olmuş nesneye erişim programı durdurur. Karşı taraf senden önce yok olabiliyorsa `weak`, en az senin kadar yaşayacağı kesinse `unowned`.
@@ -338,6 +401,12 @@ View'lar ekranın o anki durumunun ucuz, değişmez tarifleridir; SwiftUI onlar�
 **8. `let` ile tanımlı bir class örneğinin özelliği değiştirilebilir mi?**
 Evet, özellik `var` ise. `let` yalnızca referansı sabitler; değişken başka bir nesneyi gösteremez ama nesnenin kendisi değişebilir. Struct'ta ise `let` her şeyi dondurur.
 
+**9. Class neden struct'tan daha pahalı?**
+Class örneği heap'te ayrılır (yer aramak ve serbest bırakmak maliyetlidir), her referans kopyası ve bırakılışı atomik bir retain/release demektir, alanlara her erişim bir pointer'ı takip etmeyi gerektirir ve `final` olmayan class'ta metot çağrıları dinamik dispatch'tir. Struct'ı kopyalamak ise çoğu zaman sadece birkaç bayt taşımaktır (içindeki referanslar hariç).
+
+**10. `MemoryLayout<BookmarkReference>.size` ile `MemoryLayout<any ReadingItem>.size` kaçtır?**
+64-bit'te 8 ve 40. Class tipinin değişkeninde yalnızca adres durur, nesne ne kadar büyük olursa olsun. Existential ise 5 kelimelik bir kutudur: 3 kelimelik değer tamponu + tip bilgisi + witness table. `size` ile `stride` farkı da sorulabilir: `Int` + `Bool` taşıyan bir struct'ın `size`'ı 9, `stride`'ı 16'dır (hizalama).
+
 ## Alıştırmalar
 
 **1. Closure senaryosu ekle.**
@@ -351,3 +420,7 @@ Değer semantiği korunmalı: Bir kopyadan son sayfayı silmek diğer kopyayı e
 **3. `BookmarkReference`'ı `Sendable` yapmayı dene.**
 Önce sadece `: Sendable` ekle ve derleyicinin verdiği hatayı oku. Sonra iki farklı şekilde derlenir hale getir: (a) `page`'i `let` yapıp `advance(by:)`'ı yeni bir nesne döndüren bir metoda çevirerek, (b) tipi bir `actor`'e çevirerek. İki çözümde çağıran kodun nasıl değiştiğini karşılaştır.
 *İpucu:* Hata mesajı "stored property 'page' of 'Sendable'-conforming class 'BookmarkReference' is mutable" olacak. Actor çözümünde `advance(by:)` dışarıdan `await` ile çağrılır.
+
+**4. Bellek deneyine bir satır ekle.**
+`MemoryLayoutDemo.rows`'a `Character`, `Int?` ve iki protocol'lü bir existential (`any ReadingItem & CustomStringConvertible`) için satırlar ekle. Değerleri önce tahmin et, sonra uygulamada gör ve `FundamentalsMemoryLayoutTests`'e kelime (word) cinsinden yazılmış birer test ekle.
+*İpucu:* `Int?` için `size` 9'dur (Int'in tüm bit desenleri geçerli bir sayı olduğu için `nil`'e ayrı bir bayt gerekir); `BookmarkReference?` ise 8'dir, çünkü boş adres (0) geçerli bir referans değildir ve `nil` için kullanılabilir. İki protocol'lü existential, her protocol için bir witness table taşır.
