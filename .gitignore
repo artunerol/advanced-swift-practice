@@ -1,0 +1,44 @@
+# .gitignore — Git'in takip ETMEYECEĞİ dosyalar.
+# Kural: Üretilebilen (build çıktısı) ve kişiye özel (kullanıcı ayarları) dosyalar depoya girmez.
+
+# --- Derleme çıktıları ---
+# scripts/ci.sh her şeyi build/ altına yazar (DerivedData + .xcresult sonuç paketleri).
+build/
+# Xcode'un varsayılan DerivedData klasörü proje içine taşınmışsa.
+DerivedData/
+# Test sonuç paketleri (CI bunları "artifact" olarak saklar, depoya girmezler).
+*.xcresult
+# Arşiv ve dağıtım çıktıları.
+*.xcarchive
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# --- Xcode kullanıcıya özel dosyaları ---
+# xcuserdata/: kişisel şemalar, kesme noktaları (breakpoint), pencere düzeni. Herkesinki farklıdır.
+# DİKKAT: xcshareddata/ (paylaşılan şema) ise depoya GİRMELİ; CI şemayı oradan okur.
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+timeline.xctimeline
+
+# --- Swift Package Manager ---
+# Package.resolved depoya girer (herkes aynı paket sürümlerini kullansın); önbellek klasörleri girmez.
+.build/
+.swiftpm/
+
+# --- Fastlane (ileride eklenirse) ---
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# --- İşletim sistemi / editör ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.vscode/
+.idea/

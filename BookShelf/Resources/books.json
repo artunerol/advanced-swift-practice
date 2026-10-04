@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1,
+    "title": "Tutunamayanlar",
+    "author": "Oğuz Atay",
+    "year": 1972,
+    "isbn": "978-605-000-001-6",
+    "pageCount": 724,
+    "summary": "Selim Işık'ın intiharıyla başlayan, arkadaşı Turgut Özben'in onun izini sürerken kendi hayatını sorguladığı, ironi ve oyunlarla dolu çok katmanlı bir roman."
+  },
+  {
+    "id": 2,
+    "title": "Kürk Mantolu Madonna",
+    "author": "Sabahattin Ali",
+    "year": 1943,
+    "isbn": "978-605-000-002-3",
+    "pageCount": 160,
+    "summary": "İçine kapanık Raif Efendi'nin defterinden, gençliğinde Berlin'de tanıdığı Maria Puder'e duyduğu sessiz ve derin aşkın hikâyesi."
+  },
+  {
+    "id": 3,
+    "title": "Saatleri Ayarlama Enstitüsü",
+    "author": "Ahmet Hamdi Tanpınar",
+    "year": 1961,
+    "isbn": "978-605-000-003-0",
+    "pageCount": 382,
+    "summary": "Hayri İrdal'ın ağzından, bürokrasiyi ve modernleşme sancılarını absürt bir enstitü üzerinden hicveden bir roman."
+  },
+  {
+    "id": 4,
+    "title": "İnce Memed",
+    "author": "Yaşar Kemal",
+    "year": 1955,
+    "isbn": "978-605-000-004-7",
+    "pageCount": 436,
+    "summary": "Çukurova'da ağanın zulmüne başkaldıran genç Memed'in dağa çıkıp bir efsaneye dönüşmesinin destansı öyküsü."
+  },
+  {
+    "id": 5,
+    "title": "Benim Adım Kırmızı",
+    "author": "Orhan Pamuk",
+    "year": 1998,
+    "isbn": "978-605-000-005-4",
+    "pageCount": 472,
+    "summary": "16. yüzyıl İstanbul'unda nakkaşlar arasında işlenen bir cinayetin, farklı anlatıcıların gözünden çözüldüğü bir roman."
+  },
+  {
+    "id": 6,
+    "title": "Tehlikeli Oyunlar",
+    "author": "Oğuz Atay",
+    "year": 1973,
+    "isbn": "978-605-000-006-1",
+    "pageCount": 480,
+    "summary": "Gecekonduda yaşayan Hikmet Benol'un hayal ile gerçek arasında gidip gelen iç dünyasını anlatan bir roman."
+  },
+  {
+    "id": 7,
+    "title": "Kuyucaklı Yusuf",
+    "author": "Sabahattin Ali",
+    "year": 1937,
+    "isbn": "978-605-000-007-8",
+    "pageCount": 256,
+    "summary": "Kimsesiz kalan Yusuf'un bir kasabada büyüyüşü, Muazzez'e duyduğu aşk ve adaletsizliğe karşı mücadelesi."
+  },
+  {
+    "id": 8,
+    "title": "Huzur",
+    "author": "Ahmet Hamdi Tanpınar",
+    "year": 1949,
+    "isbn": "978-605-000-008-6",
+    "pageCount": 392,
+    "summary": "İkinci Dünya Savaşı arifesinde İstanbul'da Mümtaz ile Nuran'ın aşkını; müzik, şiir ve şehirle iç içe anlatan bir roman."
+  }
+]

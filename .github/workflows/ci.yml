@@ -1,0 +1,127 @@
+# .github/workflows/ci.yml — Kitaplık (BookShelf) için sürekli entegrasyon (Continuous Integration).
+#
+# GitHub, .github/workflows/ altındaki her .yml dosyasını bir "workflow" (iş akışı) olarak tanır.
+# Bu workflow her push ve pull request'te temiz bir macOS makinesi açar, projeyi derler ve testleri koşar.
+#
+# Asıl iş scripts/ci.sh içinde. YAML sadece "hangi makinede, hangi sırayla" sorusunu cevaplar.
+# Böylece aynı adımları lokalde de birebir çalıştırabiliriz: ./scripts/ci.sh all  (ya da: make ci)
+
+# Actions sekmesinde ve PR'daki kontrol listesinde görünen ad.
+name: CI
+
+# Tetikleyiciler (trigger): workflow ne zaman çalışsın?
+on:
+  # main dalına her push'ta (ör. bir PR birleştirildiğinde). Diğer dallara push'lar PR üzerinden test edilir.
+  push:
+    branches: [main]
+  # Açılan / güncellenen her pull request'te. Birleştirmeden ÖNCE kırık kodu yakalamak CI'ın asıl amacı.
+  pull_request:
+  # Actions sekmesindeki "Run workflow" düğmesiyle elle çalıştırmak için.
+  workflow_dispatch:
+
+# Eşzamanlılık (concurrency): Aynı dal / PR için yeni bir çalıştırma başlarsa, hâlâ süren eskisini iptal et.
+# PR'a art arda 3 commit push'larsan 3 ayrı macOS makinesi boşuna çalışmaz; sadece en sonuncusu tamamlanır.
+# group: aynı grup adını taşıyan çalıştırmalar birbirini bekler/iptal eder. github.ref = dal ya da PR referansı.
+# (İstersen main'deki çalıştırmaları hiç iptal etmemek için: cancel-in-progress: ${{ github.event_name == 'pull_request' }})
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# En az yetki ilkesi: Workflow'a verilen GITHUB_TOKEN sadece depoyu OKUYABİLSİN.
+# Kodu indirmek için bu yeterli; yazma yetkisi gereksiz bir saldırı yüzeyi olurdu.
+permissions:
+  contents: read
+
+# Tüm "run" adımları için kabuk (shell). "bash" yazınca GitHub bunu "bash --noprofile --norc -eo pipefail {0}" olarak çalıştırır:
+# bir komut veya boru hattındaki (pipe) herhangi bir parça başarısız olursa adım da başarısız olur.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # İş (job) kimliği. Bir workflow'da birden çok iş olabilir; varsayılan olarak PARALEL çalışırlar
+  # (sıralamak için "needs:" kullanılır). Bizim tek işimiz var.
+  build-and-test:
+    # PR'daki kontrol listesinde görünen ad. Branch protection'da "zorunlu kontrol" seçerken bu adı seçeceksin.
+    name: Derle ve test et
+    # Runner: İşin çalışacağı makine. GitHub'ın barındırdığı macOS 26 sanal makinesi; her iş için sıfırdan açılır.
+    # iOS derlemek için Xcode, Xcode için macOS gerekir; bu yüzden ubuntu-latest kullanamayız.
+    runs-on: macos-26
+    # Bir şey takılırsa (ör. simülatör açılmazsa) makine saatlerce boşa dönmesin. Normal süre birkaç dakika.
+    timeout-minutes: 30
+
+    # Adımlar (step) sırayla, aynı makinede çalışır. Bir adım başarısız olursa sonrakiler varsayılan olarak ATLANIR
+    # (bir adımda "if:" ile bu davranışı değiştirebiliriz).
+    steps:
+      # "uses:" hazır bir action çalıştırır (sahip/depo@sürüm). checkout, depoyu runner'a indirir.
+      # Runner başlangıçta BOŞTUR; bu adım olmadan ortada derlenecek kod yoktur.
+      - name: Kodu indir
+        uses: actions/checkout@v7
+
+      # Runner'da birden çok Xcode kurulu. Hangisinin kullanılacağını açıkça seçiyoruz.
+      # latest-stable: kurulu en yeni KARARLI (beta olmayan) Xcode. Artısı: bakım gerektirmez, yeni SDK'ları
+      # otomatik alırız. Eksisi: GitHub imajı güncellediğinde Xcode sürümü "kendiliğinden" değişebilir.
+      # Tekrarlanabilirlik daha önemliyse sürümü sabitle: xcode-version: '26.3'. Sürümü tırnak içinde yaz:
+      # tırnaksız 26.0 gibi bir değer YAML'da sayı olarak okunur ve "26"ya dönüşebilir.
+      - name: Xcode'u seç
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # Teşhis adımı: Bir şey kırıldığında ilk bakacağın yer. Hangi Xcode, hangi SDK, hangi simülatörler var?
+      # "run:" adımları kabuk komutlarıdır; "|" ile çok satırlı betik yazılır.
+      - name: Ortam bilgisi
+        run: |
+          sw_vers
+          xcodebuild -version
+          echo "iOS Simulator SDK: $(xcrun --sdk iphonesimulator --show-sdk-version)"
+          xcrun simctl list devices available
+          if command -v xcbeautify >/dev/null; then echo "xcbeautify: $(xcbeautify --version || true)"; else echo "xcbeautify yok; ham xcodebuild çıktısı kullanılacak"; fi
+          echo "Seçilecek hedef: $(./scripts/ci.sh destination)"
+
+      # BİR kez derle: uygulama + birim test paketi + UI test paketi. Çıktı build/DerivedData altına gider.
+      # "id:" sayesinde sonraki adımlar bu adımın sonucuna (steps.build.outcome) bakabilir.
+      - name: Derle (build-for-testing)
+        id: build
+        run: ./scripts/ci.sh build
+
+      # Birim testleri, az önce derlenmiş ürünlerle (yeniden derlemeden) çalışır.
+      - name: Birim testleri (XCTest)
+        id: unit
+        run: ./scripts/ci.sh unit
+
+      # UI testleri. Varsayılan olarak önceki adım başarısızsa bu adım atlanırdı; ama birim testleri kırıldığında
+      # UI testlerinin durumunu da görmek isteriz (tek çalıştırmada tüm hatalar). Derleme başarısızsa ise
+      # çalıştırmanın anlamı yok. !cancelled(): workflow iptal edildiyse (ör. yeni push geldi) boşuna çalışma.
+      - name: UI testleri (XCUITest)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./scripts/ci.sh ui
+
+      # Kod kapsamı tablosunu hem loga hem de çalıştırmanın "Summary" sayfasına yaz.
+      # $GITHUB_STEP_SUMMARY: Bu dosyaya yazılan Markdown, Actions'taki özet sayfasında gösterilir.
+      - name: Kod kapsamı özeti
+        if: ${{ !cancelled() && steps.unit.outcome == 'success' }}
+        run: |
+          ./scripts/ci.sh coverage | tee build/results/coverage.txt
+          {
+            echo "### Kod kapsamı (birim testleri)"
+            echo '```'
+            cat build/results/coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Artifact: İş bittikten sonra da indirilebilen dosyalar. Runner makinesi iş bitince SİLİNİR; .xcresult
+      # paketlerini (loglar, hata ekran görüntüleri, kapsam) buraya yüklemezsek hatayı incelemenin yolu kalmaz.
+      # if: always() → önceki adımlar başarısız olsa bile çalış. Asıl ihtiyaç duyduğumuz an zaten testlerin kırıldığı an.
+      - name: Test sonuçlarını yükle (.xcresult)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          # Aynı çalıştırmada aynı ad iki kez kullanılamaz; "Re-run" denemeleri çakışmasın diye deneme numarasını ekliyoruz.
+          name: xcresults-attempt-${{ github.run_attempt }}
+          # .xcresult aslında bir klasör (paket). Joker karakter hem unit hem ui paketini yakalar.
+          path: build/results/*.xcresult
+          # Derleme aşamasında kırıldıysa hiç sonuç olmaz; bu durumda ayrıca uyarı üretme.
+          if-no-files-found: ignore
+          # Depolama kotası için: 14 gün sonra otomatik silinsin.
+          retention-days: 14
