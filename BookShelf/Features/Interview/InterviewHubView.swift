@@ -19,7 +19,7 @@ struct InterviewHubView: View {
     @State private var query = ""
     @State private var isConfirmingReset = false
 
-    /// Aramaya uyan konular. `body` her çizildiğinde yeniden hesaplanır; 16 konu için bu ucuz.
+    /// Aramaya uyan konular. `body` her çizildiğinde yeniden hesaplanır; 17 konu için bu ucuz.
     private var visibleTopics: [InterviewTopic] {
         InterviewTopic.filtered(InterviewTopic.all, matching: query)
     }

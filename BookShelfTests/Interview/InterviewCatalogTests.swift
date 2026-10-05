@@ -4,7 +4,7 @@ import XCTest
 
 /// Mülakat kataloğunun (`InterviewTopic.all`) değişmez kuralları (invariants).
 ///
-/// Konu içeriği 16 ayrı dosyada, farklı kişilerin elinden çıkıyor. Bu testler "her konu doğru yerde mi, kimliği
+/// Konu içeriği 17 ayrı dosyada, farklı kişilerin elinden çıkıyor. Bu testler "her konu doğru yerde mi, kimliği
 /// doğru mu, içerik kurallara uyuyor mu, Kod bölümündeki yollar gerçekten var mı?" sorularını her derlemede sorar.
 final class InterviewCatalogTests: XCTestCase {
     private typealias TopicID = AccessibilityID.Interview.TopicID
@@ -14,7 +14,7 @@ final class InterviewCatalogTests: XCTestCase {
         TopicID.protocolExtension, TopicID.protocolAsType, TopicID.structVsClass, TopicID.typealiasTopic,
         TopicID.arcRetainCycle,
         TopicID.vcLifecycle, TopicID.dynamicCells, TopicID.frameVsBounds, TopicID.tableVsCollection, TopicID.delegate,
-        TopicID.architecture, TopicID.dipVsDi,
+        TopicID.architecture, TopicID.dipVsDi, TopicID.viperService,
         TopicID.persistence,
         TopicID.cicd,
         TopicID.concurrency, TopicID.objcInterop,
@@ -22,7 +22,7 @@ final class InterviewCatalogTests: XCTestCase {
 
     // MARK: - Katalog yapısı
 
-    func testCatalogListsAllSixteenTopicsInInterviewOrder() {
+    func testCatalogListsAllSeventeenTopicsInInterviewOrder() {
         XCTAssertEqual(InterviewTopic.all.map(\.id), Self.expectedOrder)
     }
 

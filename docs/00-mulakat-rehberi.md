@@ -1,4 +1,4 @@
-# Mülakat Rehberi: 14 Soru + 2 Bonus
+# Mülakat Rehberi: 15 Soru + 2 Bonus
 
 **Buradan başla.** Bu rehber projedeki her şeyi tek bir sıraya dizer: soru → 30 saniyelik cevap → ek sorular → tuzaklar → koda bakılacak yer → demo. Uygulamadaki **Mülakat** sekmesi aynı içeriğin cep sürümüdür; her sorunun uygulama içi metni [`BookShelf/Features/Interview/Topics/`](../BookShelf/Features/Interview/Topics/) altında, kendi dosyasındadır. Bir konuyu derinlemesine öğrenmek istersen her bölümün sonundaki ders bağlantısına git.
 
@@ -11,7 +11,7 @@ Rehberdeki dil ve SDK iddiaları bu projenin araçlarıyla denendi: Xcode 26.3, 
 - **UIKit:** [4. UIViewController yaşam döngüsü](#soru-04) · [5. Dinamik (self-sizing) hücre](#soru-05) · [6. frame vs bounds](#soru-06) · [7. UITableView vs UICollectionView](#soru-07)
 - **Swift:** [8. typealias](#soru-08)
 - **Süreç:** [9. CI/CD](#soru-09)
-- **Mimari:** [10. Clean Architecture, VIPER, MVVM](#soru-10) · [11. Dependency Inversion vs Injection](#soru-11)
+- **Mimari:** [10. Clean Architecture, VIPER, MVVM](#soru-10) · [11. Dependency Inversion vs Injection](#soru-11) · [15. VIPER'da servis çağrısı ve katman testleri](#soru-15)
 - **Veri:** [12. Kalıcılık](#soru-12)
 - **Bellek:** [13. ARC ve retain cycle](#soru-13) · [14. Delegate: kim kimi tutar?](#soru-14)
 - **Bonus:** [Swift Concurrency](#bonus-concurrency) · [Objective-C interop](#bonus-objc)
@@ -49,7 +49,7 @@ Günde yaklaşık 2 saat. Her günün sonunda, o günün sorularını uygulamada
 | 1 · Swift dili | [1](#soru-01), [2](#soru-02), [3](#soru-03), [8](#soru-08) | 16 soruluk "derlenir mi?" quiz'ini bitir. Struct vs Class → Bellek'te adresleri karşılaştır. | `some` ile `any` farkını iki cümlede söyleyebiliyor muyum? "Struct stack'te" cümlesini nasıl düzeltirim? |
 | 2 · Bellek ve sahiplik | [13](#soru-13), [14](#soru-14) | Sızıntı laboratuvarındaki 5 senaryonun ikişer sürümünü aç-kapat. Delegate → Sahiplik deneyini çalıştır. | Delegate neden `weak`, neden `unowned` değil? `[weak self]` hangi closure'da gerekmez? |
 | 3 · UIKit | [4](#soru-04), [5](#soru-05), [6](#soru-06), [7](#soru-07) | Yaşam döngüsü günlüğünde PageSheet ile FullScreen'i karşılaştır. frame/bounds'ta 45° döndür. Hücre aç/kapa. | `viewDidLayoutSubviews`'a ne konur, ne konmaz? Döndürülmüş bir view'ın frame'i neden güvenilmez? |
-| 4 · Mimari ve veri | [10](#soru-10), [11](#soru-11), [12](#soru-12) | VIPER'da not ekle, MVVM'e geç. Depo seçicisini değiştir. DI sayaçlarını izle. | DIP ile DI farkını bir örnekle anlatabiliyor muyum? Token'ı neden UserDefaults'a koymam? |
+| 4 · Mimari ve veri | [10](#soru-10), [11](#soru-11), [15](#soru-15), [12](#soru-12) | VIPER'da not ekle, MVVM'e geç. Depo seçicisini değiştir. DI sayaçlarını izle. Kitap Arama'da "atay" yaz, Özet'e bak, detaya git. | DIP ile DI farkını bir örnekle anlatabiliyor muyum? Bir aramanın VIPER'daki yolculuğunu ve iptalin yerini çizebiliyor muyum? Token'ı neden UserDefaults'a koymam? |
 | 5 · Süreç ve prova | [9](#soru-09), [bonuslar](#bonus-concurrency) | CI/CD demosunda gerçekten yaptıklarını işaretle, cevap taslağını oku. | Rastgele 6 soruyu süre tutarak cevapla; takıldıklarının ✓ işaretini kaldır ve yarın tekrar et. |
 
 <a id="son-10-dakika"></a>
@@ -71,6 +71,7 @@ Her satır, o sorunun "mutlaka söylenecek" cümlesi. Hepsini sesli oku.
 - [ ] **12 · Kalıcılık:** Tercih → UserDefaults, sır → Keychain, belge → dosya, ilişkili ve sorgulanan veri → Core Data/SwiftData. Managed object thread'ler arasında taşınmaz; `NSManagedObjectID` taşınır.
 - [ ] **13 · ARC:** Güçlü referans sayımı, GC yok; döngüyü ARC bulamaz, geri oku `weak` (ölebilir) ya da `unowned` (ömür garantili) yaparım.
 - [ ] **14 · Delegate:** Kalıtım yok. Sahip olan, uzun yaşayan taraf delegate olur; sahip olunan taraf protokolü tanımlar ve delegate'ini `weak` tutar.
+- [ ] **15 · VIPER'da servis çağrısı:** View iletir, Presenter karar verir, Interactor Task açıp use case'i `await` eder, sonuç output ile döner. İptal interactor'da (son arama kazanır); hepsi `@MainActor`, yavaş iş nonisolated use case'te.
 - [ ] **Bonus · Concurrency:** Actor data race'i önler, race condition'ı önlemez (reentrancy). `async` "arka plan" demek değildir; yeri izolasyon belirler.
 - [ ] **Bonus · ObjC:** Köprü başlığı ObjC'yi Swift'e, `-Swift.h` Swift'i ObjC'ye açar; nullability işaretleri Optional'ı belirler.
 
@@ -695,6 +696,63 @@ Aynı kural her yerde: `UITableView` ↔ VC (`tableView.delegate = self`), VIPER
 Mülakat → "Delegate pattern'de kim delegate olur?" → **Demo**. **Canlı**: Yıldızlara dokun; delegate, closure ve target-action kanallarının üçü de haber verir. **Sahiplik**: Şemayı incele, sonra "Sahibi yok et, kontrolü yaşat": Sahip serbest kalır, `delegate` kendiliğinden `nil` olur, kontrol çökmeden çalışır. **Hangisi?**: Delegate / closure / target-action / NotificationCenter / AsyncStream karar tablosu.
 
 Ders: [12 ARC ve Delegate](12-arc-ve-delegate.md) (§6-7).
+
+---
+
+<a id="soru-15"></a>
+## 15. VIPER'da servis çağrısı: akış, iptal ve katman katman test
+
+> **Soru:** "VIPER'da bir servis çağrısı nasıl akar? Her katmanı nasıl test edersin?"
+
+10. sorunun devamı. Orada VIPER'ın parçalarını ve sahipliği anlattın; burada bir isteğin modülün içinden nasıl geçtiğini, async sınırın ve iptalin nerede durduğunu ve her parçanın nasıl test edildiğini anlatıyorsun. Projedeki örnek: **Kitap Arama** modülü.
+
+### 30 saniyelik cevap
+
+> "Akış tek yönlü ve her ok bir protokol. View olayı iletir: arama kutusu değişti. Presenter karar verir ve interactor'a 'ara' der. Interactor bir Task açar, kısa bir debounce bekler ve use case'i await eder; use case servisi çağırır, kuralları uygular: en az iki harf, Türkçe harf katlama, önce başlık eşleşmeleri. Sonuç interactor'dan output ile presenter'a döner, presenter onu ekran durumuna çevirip view'a render ettirir. Router yalnızca navigasyonda devreye girer, satıra dokununca detayı push eder. View, presenter ve interactor @MainActor: durum tek seri yerde, çağrılar senkron. Yavaş iş nonisolated use case'te; her await ana actor'den çıkıp geri döner. İptal interactor'da: yeni sorgu öncekini iptal eder; iptal edilmiş aramanın ne sonucu ne hatası gösterilir. await'ten sonraki kontrol geç gelen sonucu düşürür; hatada ölçüt hatanın türü değil Task.isCancelled, çünkü URLSession iptali CancellationError değil URLError(.cancelled) olarak gelir. Test katman katman: use case'i stub servisle, interactor'ı spy use case ve spy output'la async olarak, presenter'ı spy view, mock interactor ve spy router'la senkron olarak, router'ı build bağlantıları ve retain cycle ile; uçtan uca akışı da bir UI testiyle doğrularım."
+
+### Akış tek resimde
+
+```text
+View        searchBar(_:textDidChange:)  ──▶ presenter.didChangeSearchText("atay")
+Presenter   interactor.search(query: "atay", trigger: .typing)              ◀── render(.loading / .results(rows:))
+Interactor  cancelSearch() · validatedQuery · Task { sleep 300 ms → await use case → checkCancellation }
+Use case    SearchBooksUseCase.execute(query:) ──▶ service.fetchBooks() ──▶ eşleştir + sırala
+Router      satıra dokununca: showBookDetail(book) → UIHostingController(BookDetailView) push
+            ─────────────────────────────────────────────────────────────────────────────
+            @MainActor: View, Presenter, Interactor, Router        nonisolated: use case'ler, servis
+```
+
+### Derinleşirse
+
+- **Neden hepsi `@MainActor`?** View bir `UIViewController`, SDK'da zaten `@MainActor`. Presenter view'ı, interactor presenter'ı senkron çağırıyor; hepsi aynı actor'deyse bu çağrılar düz fonksiyon çağrısıdır: hop yok, `await` yok, durum tek seri yerde, data race yok. Ana thread tıkanmaz, çünkü yavaş iş nonisolated `async` use case'lerde. Xcode 26 şablonlarındaki "Default Actor Isolation = MainActor" aynı fikri modül varsayılanı yapar; dışarı çıkmak için `nonisolated`, async işi kesinlikle arka plana göndermek için `@concurrent`.
+- **İptal neden presenter'da değil de interactor'da?** Task'ın sahibi ve use case'i `await` eden interactor. Presenter senkron ve UIKit'siz kalmalı; Task tutsaydı testleri bekleme gerektirir ve async mantık sunuma sızardı. Interactor yeni aramada önceki Task'ı `cancel()` eder, `await`'ten sonra `Task.checkCancellation()` ile geç gelen sonucu atar, `deinit`'te uçuştaki işi iptal eder. Aynı kural hata için de geçerli: iptal edilmiş task'ın hatası bildirilmez (`catch _ where Task.isCancelled`); yoksa `URLSession`'ın `URLError(.cancelled)`'ı her yeni harfte bir an "Arama yapılamadı" gösterirdi. Favori ise bir komut: iptal edilmez.
+- **Debounce ve geçmiş nasıl ayrılıyor?** `BookSearchTrigger`: `.typing` 300 ms bekler ve geçmişe yazılmaz; `.submitted` (Ara, geçmişten seçim, Tekrar dene) beklemez ve sonuç verirse yazılır; yazarak bulunan bir sonuç açılırsa arama da hatırlanır (kutudaki metin değil, o satırı bulan sorgu: debounce sırasında kutuda bir önek ya da sonuçsuz bir metin olabilir). İlk sürümde her başarılı arama yazılıyordu; harf harf silmek her öneki geçmişe kaydetti ve bunu UI testi yakaladı.
+- **Use case'lere neden burada protokol yazdın, Okuma Notları'nda yazmadın?** Notlarda tek dikiş depo; testler gerçek kuralları bellek deposuyla çalıştırıyor. Burada interactor'ın işi zamanlama; "ilk sorgu yavaş, ikincisi hızlı" senaryosunu kurmak için sorgu başına kontrol edilen spy gerekiyor. Bedeli daha fazla tip ve spy gerçek davranıştan saparsa yanlış güven; kurallar kendi testlerinde ayrıca doğrulanıyor.
+- **Async bir interactor'ı nasıl test edersin?** Test metodu `@MainActor` ve `async`. Spy output her olayda bir `XCTestExpectation`'ı `fulfill()` eder, test `await fulfillment(of:timeout:)` ile bekler; beklenen olay sayısı tam olmalı. Ara durumlar ("spy çağrıyı aldı mı?") için zaman sınırlı yoklama. Debounce süresi yapılandırmayla kısaltılır; sınırsız `sleep` yok.
+- **Stub, spy, mock, fake: bu modülde hangisi nerede?** Stub hazır cevap döner (`StubBookService`, özet use case stub'ı). Spy çağrıları kaydeder, doğrulamayı test yapar (spy view, spy router, spy use case'ler). Mock beklentiyi önceden bilir ve kendisi doğrular (`InteractorMock.verify()`). Fake çalışan basit uygulamadır (`InMemoryRecentSearchesStore`). Dummy yalnızca imzayı doldurur (kaydırma eylemine verilen `UIView()`).
+- **Dört tür use case?** Sorgu + kural (`SearchBooksUseCase`), birleştirme ve kısmi hata politikası (`LoadBookInsightsUseCase`: yorumlar zorunlu, yazar isteğe bağlı, `async let` ile paralel), komut (`ToggleFavoriteUseCase`: yeni durumu döndürür), yerel depolama politikası (`RecentSearchesUseCase`: en fazla 5, tekrar yok).
+
+### Tuzaklar
+
+- Servisi presenter'da (ya da view'da) bir Task ile çağırmak: async, iptal ve iş kuralı sunuma dolar; presenter testleri beklemek zorunda kalır.
+- Önceki aramayı iptal etmemek ya da `await`'ten sonra iptali kontrol etmemek: "ata"nın geç gelen sonucu "atay"ınkini ezer (data race olmadan bir race condition).
+- İptali hata gibi göstermek. Yalnızca `CancellationError`'u ayırmak da yetmez: `URLSession` iptali `URLError(.cancelled)` olarak gelir; ölçüt `Task.isCancelled` olmalı. Tersi de tuzak: isteğe bağlı bir istekte `try?` ile iptali yutup iptal edilmiş işi sürdürmek.
+- Task içinde `self`'i strong yakalamak: 600 ms'lik istek modülü ekran kapandıktan sonra da yaşatır. `[weak self]` ve gereken değerleri task'tan önce yerel sabitlere kopyalamak doğrusu.
+
+### Koda bak
+
+1. [BookSearchContracts.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchContracts.swift) → `BookSearchInteractorOutput`, `BookSearchViewState`: Aramanın yolculuğu şeması ve "Neden hepsi @MainActor?" açıklaması.
+2. [BookSearchInteractor.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchInteractor.swift) → `BookSearchInteractor.search(query:trigger:)`: Task saklama, son arama kazanır, debounce, iptal edilmiş aramanın sonucunu da hatasını da düşürmek. `await`'ten sonraki `checkCancellation` neden şart; `catch is CancellationError` neden yetmez?
+3. [SearchBooksUseCase.swift](../BookShelf/Features/BookSearch/Domain/SearchBooksUseCase.swift) → `SearchBooksUseCase.searchKey(for:)`: "oguz" neden Oğuz'u bulur, "INCE" neden İnce'yi bulur; varsayılan `lowercased()` "İ"yi neden bozar?
+4. [LoadBookInsightsUseCase.swift](../BookShelf/Features/BookSearch/Domain/LoadBookInsightsUseCase.swift) → `LoadBookInsightsUseCase.execute(for:)`: `async let` ile iki paralel istek; kısmi hata politikası; iptal neden yeniden fırlatılıyor?
+5. [BookSearchRouter.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchRouter.swift) → `BookSearchRouter.build(dependencies:recentSearchesStore:configuration:)`: Modül kurulumu ve gerçek push. Çubuk gizliyken geri dönüş nasıl sağlanıyor?
+6. [BookSearchInteractorTests.swift](../BookShelfTests/BookSearch/BookSearchInteractorTests.swift) → `testNewQueryCancelsSlowPreviousSearch`: Yavaş ilk arama iptal ediliyor; çıkışa yalnızca ikincinin sonucu ulaşıyor.
+
+### Demo
+
+Mülakat → "VIPER'da bir servis çağrısı nasıl akar?" → **Demo**. "atay" yaz: Oğuz Atay'ın iki kitabı gelir (yalnızca yazarda eşleşir, Türkçe alfabetik). "oguz", "INCE", "kirmizi" dene: Türkçe harfler katlanır. Tek harf yaz: anında ipucu, servis çağrısı yok. Satırı sola kaydır: **Özet** (yorum ortalaması, yazarın başka kitabı) ve **Favori**. Satıra dokun: detay push edilir; alttaki "Sonuçlara dön" ile geri gel. Kutuyu temizle: son aramalar. Uygulamayı `-simulate-network-error` başlatma argümanıyla açarsan (Xcode: Edit Scheme → Run → Arguments) hata mesajı ve "Tekrar dene" görünür.
+
+Ders: [13 Mimari](13-mimari.md) (§11) ve [09 XCTest](09-xctest.md) (§13).
 
 ---
 

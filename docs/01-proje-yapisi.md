@@ -33,13 +33,14 @@ Assesments/                               depo kökü
 │   │   ├── Interview/                    Mülakat sekmesi (aşağıda "Mülakat merkezi")
 │   │   │   ├── InterviewTopic.swift      bir sorunun modeli: cevap, ek sorular, tuzaklar, kod yönlendirmeleri, demo
 │   │   │   ├── InterviewTopic+Catalog.swift  sorular hangi sırayla görünür
-│   │   │   ├── Topics/                   soru başına bir dosya (Topic+<Ad>.swift), 16 dosya
+│   │   │   ├── Topics/                   soru başına bir dosya (Topic+<Ad>.swift), 17 dosya
 │   │   │   ├── Demos/                    soruların canlı demoları (SwiftBasics, Memory, UIKitLabs, Delegation, ...)
 │   │   │   └── Hub/                      merkez listesi ve konu ekranının parçaları (Cevap / Kod bölmeleri)
 │   │   ├── ReadingNotes/                 Clean Architecture örneği (aşağıda "Okuma notları")
 │   │   │   ├── Domain/                   Entities, Repositories (protokol), UseCases; UI ve depolama bilmez
 │   │   │   ├── Data/                     NotesRepository'nin 5 uygulaması: bellek, UserDefaults, dosya, Core Data, SwiftData
 │   │   │   └── Presentation/             aynı use case'ler iki sunumla: VIPER/ (UIKit) ve MVVM/ (SwiftUI)
+│   │   ├── BookSearch/                   servis çağrısı yapan ikinci VIPER modülü: Domain (4 tür use case), Data, Presentation/VIPER
 │   │   └── Fundamentals/  ISBNChecker/   struct vs class, protocol'ler, typealias, Objective-C (demoları Mülakat'ta)
 │   ├── ObjC/                             Objective-C sınıfları + köprü başlığı (bridging header)
 │   └── Resources/                        books.json, Assets.xcassets
@@ -334,7 +335,7 @@ Simülatör otomatik seçilir: seçili Xcode'un SDK'sıyla uyumlu en yeni iOS s�
 | [BookShelfApp.swift](../BookShelf/App/BookShelfApp.swift) | `BookShelfApp` (`@main`): `init()` içinde başlatma argümanlarını okur, `-ui-testing`'de animasyonları kapatır |
 | [AppDependencies.swift](../BookShelf/App/AppDependencies.swift) | `AppDependencies.makeForLaunch(arguments:)`: argümana göre servisi kurar |
 | [RootTabView.swift](../BookShelf/App/RootTabView.swift) | `RootTabView`: dört sekme ve her sekmenin öğrettiği konu |
-| [Features/](../BookShelf/Features/) | Her ekran kendi klasöründe: [BookList](../BookShelf/Features/BookList/), [BookDetail](../BookShelf/Features/BookDetail/), [Favorites](../BookShelf/Features/Favorites/), [ConcurrencyLab](../BookShelf/Features/ConcurrencyLab/), [Interview](../BookShelf/Features/Interview/), [ReadingNotes](../BookShelf/Features/ReadingNotes/), [Fundamentals](../BookShelf/Features/Fundamentals/), [ISBNChecker](../BookShelf/Features/ISBNChecker/) |
+| [Features/](../BookShelf/Features/) | Her ekran kendi klasöründe: [BookList](../BookShelf/Features/BookList/), [BookDetail](../BookShelf/Features/BookDetail/), [Favorites](../BookShelf/Features/Favorites/), [ConcurrencyLab](../BookShelf/Features/ConcurrencyLab/), [Interview](../BookShelf/Features/Interview/), [ReadingNotes](../BookShelf/Features/ReadingNotes/), [BookSearch](../BookShelf/Features/BookSearch/), [Fundamentals](../BookShelf/Features/Fundamentals/), [ISBNChecker](../BookShelf/Features/ISBNChecker/) |
 | [InterviewTopic.swift](../BookShelf/Features/Interview/InterviewTopic.swift), [InterviewTopic+Catalog.swift](../BookShelf/Features/Interview/InterviewTopic+Catalog.swift) | `InterviewTopic` modeli ve `InterviewTopic.all`: Mülakat sekmesindeki soruların sırası |
 | [Interview/Topics/](../BookShelf/Features/Interview/Topics/) | Soru başına bir dosya; uygulamadaki **Cevap** ve **Kod** bölmelerinin metni burada |
 | [ReadingNotes/Domain/](../BookShelf/Features/ReadingNotes/Domain/) | `NotesRepository` protokolü ve use case'ler: Clean Architecture'da bağımlılıkların yöneldiği katman |

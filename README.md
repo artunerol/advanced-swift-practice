@@ -3,7 +3,7 @@
 > **EN:** A small iOS app built as hands-on practice for advanced Swift/iOS topics: Swift 6 strict concurrency
 > (async/await, actors, task groups, `Sendable`), SwiftUI and UIKit side by side, Clean Architecture with VIPER and
 > MVVM, five persistence options behind one protocol, Objective-C interop, XCTest + XCUITest, and a GitHub Actions
-> CI pipeline. An in-app hub turns 16 common iOS interview questions into short answers, live demos and code pointers.
+> CI pipeline. An in-app hub turns 17 common iOS interview questions into short answers, live demos and code pointers.
 > Code comments and lessons are in Turkish.
 
 Küçük ama "gerçek" bir iOS uygulaması üzerinden ileri seviye Swift/iOS konularını pratik etmek için hazırlandı.
@@ -32,7 +32,7 @@ make test
 | Kitaplar | SwiftUI | `@Observable` MVVM, async/await, `async let`, `.task` ve iptal |
 | Favoriler | UIKit (SwiftUI içinde) | `UIViewController` yaşam döngüsü, diffable data source, `AsyncStream`, interop |
 | Laboratuvar | SwiftUI | `TaskGroup`, data race vs actor, actor reentrancy, cooperative cancellation |
-| Mülakat | SwiftUI + UIKit + Objective-C | 16 soru; her biri **Cevap** (30 saniyelik cevap, ek sorular, tuzaklar), **Demo** (canlı örnek) ve **Kod** (bakılacak dosyalar) |
+| Mülakat | SwiftUI + UIKit + Objective-C | 17 soru; her biri **Cevap** (30 saniyelik cevap, ek sorular, tuzaklar), **Demo** (canlı örnek) ve **Kod** (bakılacak dosyalar) |
 
 ## Dersler (`docs/`)
 
@@ -74,6 +74,7 @@ altında, her soru kendi dosyasında; demolar `BookShelf/Features/Interview/Demo
 | [12. Kalıcılık (UserDefaults, Keychain, Core Data...)](docs/00-mulakat-rehberi.md#soru-12) | [Topic+Persistence.swift](BookShelf/Features/Interview/Topics/Topic+Persistence.swift) | [14](docs/14-kalicilik.md) |
 | [13. ARC ve retain cycle](docs/00-mulakat-rehberi.md#soru-13) | [Topic+ArcRetainCycle.swift](BookShelf/Features/Interview/Topics/Topic+ArcRetainCycle.swift) | [12](docs/12-arc-ve-delegate.md) |
 | [14. Delegate: kim kimi tutar?](docs/00-mulakat-rehberi.md#soru-14) | [Topic+Delegate.swift](BookShelf/Features/Interview/Topics/Topic+Delegate.swift) | [12](docs/12-arc-ve-delegate.md) |
+| [15. VIPER'da servis çağrısı ve katman testleri](docs/00-mulakat-rehberi.md#soru-15) | [Topic+ViperService.swift](BookShelf/Features/Interview/Topics/Topic+ViperService.swift) | [13](docs/13-mimari.md), [09](docs/09-xctest.md) |
 | [Bonus: Swift Concurrency](docs/00-mulakat-rehberi.md#bonus-concurrency) | [Topic+Concurrency.swift](BookShelf/Features/Interview/Topics/Topic+Concurrency.swift) | [05](docs/05-async-await.md), [06](docs/06-concurrency-ve-actor.md) |
 | [Bonus: Objective-C interop](docs/00-mulakat-rehberi.md#bonus-objc) | [Topic+ObjcInterop.swift](BookShelf/Features/Interview/Topics/Topic+ObjcInterop.swift) | [08](docs/08-objective-c.md) |
 

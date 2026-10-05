@@ -4,7 +4,7 @@
 
 - **Parçaları değil, birleşmiş uygulamayı test eder.** Birim testleri view model'leri, actor'leri, Objective-C sınıflarını tek tek doğrular. "Detay ekranında kalbe dokununca UIKit ile yazılmış Favoriler sekmesindeki tablo güncelleniyor mu?" sorusunu ise ancak uygulamayı gerçekten açıp dokunan bir test cevaplar. Bu soruda SwiftUI, UIKit, `FavoritesStore` actor'ü ve `AsyncStream` birlikte çalışır.
 - **Birim testlerinin göremediği hataları yakalar.** Bu dersin testleri yazılırken gerçek bir hata bulundu: Favoriler sekmesinden açılan detay ekranında kalp düğmesi **hiç yoktu**. View model doğruydu ve birim testleri geçiyordu. Sorun, SwiftUI'ın `.toolbar`'ının `UIHostingController` üzerinden UIKit'in navigasyon çubuğuna taşınmamasıydı. Bunu yalnızca ekrana bakan bir test görebilirdi (ayrıntılar: [UIKit dersi](07-uikit.md)).
-- **Pahalıdır, bu yüzden bilinçli kullanılmalıdır.** Bu projede 165 birim testi yaklaşık 4 saniyede, 19 UI testi yaklaşık 4 dakikada koşuyor. UI testleri az ve kritik akışlara odaklı olmalı. Dersin sonundaki test piramidi bölümü bunu anlatıyor.
+- **Pahalıdır, bu yüzden bilinçli kullanılmalıdır.** Bu projede yaklaşık 480 birim testi birkaç saniyede biterken yaklaşık 50 UI testi lokalde 15 dakika kadar sürüyor. UI testleri az ve kritik akışlara odaklı olmalı. Dersin sonundaki test piramidi bölümü bunu anlatıyor.
 - **Mülakatta kesin çıkar.** "Flaky UI testleriyle ne yaparsın?", "accessibilityIdentifier ile accessibilityLabel farkı?", "UI testinde ağı nasıl taklit edersin?", "Page Object nedir?" standart sorulardır.
 
 ## Temel kavramlar
@@ -303,7 +303,7 @@ XCTContext.runActivity(named: "Ekranın üst kısmının görüntüsünü rapora
 
 Son satır bu dersi yazarken yaşandı: İlk deneme koşusunda test dışından gelen dokunuşlar (sekme değişimi, ana ekrana dönme hareketi) uygulamayı arka plana attı ve test "application is not running" hatasıyla düştü. Ekran kaydı, testin yapmadığı hareketleri gösteriyordu. Kodda hata yoktu; yeniden koşunca geçti. Çözüm, UI testlerini kimsenin elle kullanmadığı, o iş için oluşturulmuş bir simülatörde koşmak.
 
-**Tekrar deneme (retry) son çaredir.** `scripts/ci.sh ui`, başarısız bir UI testini bir kez daha dener (`-retry-tests-on-failure -test-iterations 2`). Bu, bizden bağımsız tek seferlik aksaklıklara karşı bir sigortadır; flaky bir testi düzeltmenin yerini tutmaz. Bu projedeki 19 UI testi art arda iki tam koşuda, tekrar denemeye hiç ihtiyaç duymadan geçti. Bir testi lokalde defalarca koşturmak için Xcode'da testin elmasına sağ tıklayıp **Run Repeatedly** seçebilirsin.
+**Tekrar deneme (retry) son çaredir.** `scripts/ci.sh ui`, başarısız bir UI testini bir kez daha dener (`-retry-tests-on-failure -test-iterations 2`). Bu, bizden bağımsız tek seferlik aksaklıklara karşı bir sigortadır; flaky bir testi düzeltmenin yerini tutmaz. Bu projedeki UI testleri art arda tam koşularda, tekrar denemeye hiç ihtiyaç duymadan geçti. Bir testi lokalde defalarca koşturmak için Xcode'da testin elmasına sağ tıklayıp **Run Repeatedly** seçebilirsin.
 
 ### 11. Xcode'da UI testi kaydetmek
 
@@ -319,14 +319,14 @@ Kayıt keşif için iyi bir başlangıçtır: "Bu öğeye nasıl ulaşılır?" s
 ### 12. Test piramidi: hangi test nereye?
 
 ```
-            ▲  UI testleri (19)           yavaş, pahalı, uçtan uca güven
+            ▲  UI testleri (~50)          yavaş, pahalı, uçtan uca güven
            ▲▲▲
-          ▲▲▲▲▲  birim testleri (165)     hızlı, kesin, çok sayıda
+          ▲▲▲▲▲  birim testleri (~480)    hızlı, kesin, çok sayıda
 ```
 
 | | Birim testi (XCTest) | UI testi (XCUITest) |
 |---|---|---|
-| Bu projede | 165 test ≈ 4 sn | 19 test ≈ 4 dk (test başına ≈ 12 sn) |
+| Bu projede | ~480 test ≈ 10 sn | ~50 test ≈ 15 dk (test başına ≈ 18 sn) |
 | Neye erişir? | Kodun kendisine (`@testable import`) | Yalnızca ekrana (erişilebilirlik ağacı) |
 | Neyi iyi test eder? | Mantık, kenar durumlar, hata dalları, eşzamanlılık | Akışlar, ekranlar arası bağlantı, çatıların (SwiftUI ↔ UIKit) birlikte çalışması |
 | Kırıldığında | Hangi fonksiyonun bozulduğunu söyler | Kullanıcının neyi yapamadığını söyler, sebebi aramak gerekir |

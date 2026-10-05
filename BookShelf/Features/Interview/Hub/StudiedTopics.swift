@@ -33,7 +33,7 @@ struct StudiedTopics: Equatable, Sendable {
     /// Verilen konulardan kaç tanesi çalışıldı?
     ///
     /// Yalnızca listede GERÇEKTEN olan konular sayılır. Bir konu ileride silinir ya da kimliği değişirse
-    /// eski kimlik `UserDefaults`'ta kalır; onu da saysaydık ekranda "17 / 16" gibi bir saçmalık görünürdü.
+    /// eski kimlik `UserDefaults`'ta kalır; onu da saysaydık ekranda "18 / 17" gibi bir saçmalık görünürdü.
     func count(in topics: [InterviewTopic]) -> Int {
         topics.count { ids.contains($0.id) }
     }
@@ -74,7 +74,7 @@ extension StudiedTopics {
     /// - Normal açılış: `.standard`. İşaretler uygulama kapanıp açılınca da kalır.
     /// - `-ui-testing`: Ayrı bir "suite" (ayrı bir plist dosyası) ve her açılışta **sıfırlanır**.
     ///   Neden? UI testleri birbirinden bağımsız olmalı: Bir test bir konuyu "çalışıldı" yaparsa, sonraki test
-    ///   "0 / 16" yerine "1 / 16" görürdü ve sonuç testlerin çalışma sırasına bağlı olurdu (flaky). Ayrı suite,
+    ///   "0 / 17" yerine "1 / 17" görürdü ve sonuç testlerin çalışma sırasına bağlı olurdu (flaky). Ayrı suite,
     ///   geliştiricinin simülatörde biriktirdiği gerçek işaretlere de dokunmaz.
     static func makeStore(arguments: [String]) -> UserDefaults {
         guard arguments.contains(LaunchArgument.uiTesting) else { return .standard }

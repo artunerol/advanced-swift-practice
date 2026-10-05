@@ -219,7 +219,7 @@ func testSwipeRemoveActionUpdatesStoreAndThenTable() async throws {
 - `fulfill()` çağrılmazsa `fulfillment` zaman aşımında testi başarısız sayar; test sonsuza dek asılı kalmaz. Zaman aşımını cömert tut (1–5 sn); normalde beklenti milisaniyeler içinde karşılanır.
 - **Async testte `wait(for:timeout:)` kullanılamaz.** O çağrı thread'i bloklar; Swift 6'da derleme hatasıdır:
   `error: instance method 'wait' is unavailable from asynchronous contexts; Use await fulfillment(of:timeout:enforceOrder:) instead`
-- Ek ayarlar: `expectedFulfillmentCount = 3` (üç kez çağrılmalı), `isInverted = true` ("bu olay OLMAMALI"; zaman aşımının tamamı beklenir, kısa tut), `enforceOrder: true` (birden çok beklentinin sırası), `assertForOverFulfill` (varsayılan `true`: fazladan `fulfill()` hata sayılır).
+- Ek ayarlar: `expectedFulfillmentCount = 3` (üç kez çağrılmalı), `isInverted = true` ("bu olay OLMAMALI"; zaman aşımının tamamı beklenir, kısa tut), `enforceOrder: true` (birden çok beklentinin sırası), `assertForOverFulfill` (varsayılan `true`: fazladan `fulfill()` bir API ihlalidir ve XCTest bir Objective-C istisnası (exception) fırlatır; çağrı test gövdesinin dışından, ör. bir `Task`'tan geliyorsa istisnayı yakalayan olmaz ve test süreci çöker).
 - Sonsuz olabilecek bir `await task.value`'yu zaman sınırına bağlamak için de kullanılır: [FavoritesViewControllerTests.swift](../BookShelfTests/Favorites/FavoritesViewControllerTests.swift) → `waitForCompletion(of:)`.
 
 ### 7. Actor'leri test etmek
@@ -251,7 +251,7 @@ Gerçek bağımlılığın yerine teste verilen nesnelere genel olarak *test dou
 | **Dummy** | İmzayı doldurmak için verilir, hiç kullanılmaz | `removeAction.handler(removeAction, UIView()) { ... }` içindeki `UIView()` |
 | **Stub** | Önceden belirlenmiş cevapları döndürür | `StubBookService(books: .failure(.networkUnavailable))`, `setBooksResult(_:)` |
 | **Spy** | Nasıl çağrıldığını kaydeder; doğrulamayı test yapar | `StubBookService.fetchBooksCallCount` → `XCTAssertEqual(calls, 1)` |
-| **Mock** | Beklentileri önceden programlanır ve **kendisi doğrular** (`verify()`) | Projede yok; aşağıdaki örneğe ve Alıştırma 2'ye bak |
+| **Mock** | Beklentileri önceden programlanır ve **kendisi doğrular** (`verify()`) | `BookSearchArchitectureDoubles.InteractorMock` (13. bölüm); aşağıdaki örneğe ve Alıştırma 2'ye de bak |
 | **Fake** | Çalışan ama basitleştirilmiş gerçek uygulama | `LocalBookService(latency: .zero)`: sunucu yerine paketteki JSON'u okuyan servis |
 
 Yani `StubBookService` hem stub hem spy'dır. Mock'u bir spy'dan ayıran şey doğrulamanın **nerede** durduğudur:
@@ -376,6 +376,87 @@ struct FavoritesStoreSwiftTestingTests {
 
 Bu projede XCTest'i seçmemizin nedenleri: UI testleri ve `measure` zaten XCTest gerektiriyor, mevcut kod tabanlarının büyük çoğunluğu XCTest ile yazılı ve mülakatlarda hâlâ en çok o soruluyor. Yeni bir projede birim testleri için Swift Testing iyi bir varsayılandır; iki çatı aynı hedefte yan yana yaşayabildiği için geçiş dosya dosya yapılabilir.
 
+### 13. VIPER katmanlarını test etmek
+
+VIPER'ın vaadi "her parça ayrı test edilir"dir. Kitap Arama modülü ([13 Mimari](13-mimari.md), §11) bunu katman katman gösterir; her katmanın kendi test dosyası var ([BookShelfTests/BookSearch/](../BookShelfTests/BookSearch/)). Kural: **Her katmanda yalnızca o katmanın kararını test et**, komşularını sahteyle (double) değiştir.
+
+| Katman | Neyi test et? | Double'lar | Nasıl beklenir? | Dosya |
+|---|---|---|---|---|
+| Use case | İş kuralları: en az 2 harf, Türkçe katlama, sıralama; paralel yükleme ve kısmi hata; komutun yan etkisi; geçmiş politikası | `StubBookService` (stub + spy), `InMemoryRecentSearchesStore` (fake), gerçek `FavoritesStore` | `async` test, doğrudan `await` | [BookSearchUseCaseTests.swift](../BookShelfTests/BookSearch/BookSearchUseCaseTests.swift) |
+| Interactor | Koordinasyon: debounce, "son arama kazanır" iptali, hata ayrımı, geçmişe ne zaman yazıldığı, `weak` output | Spy use case'ler + spy output | `XCTestExpectation` + `await fulfillment(of:)`, zaman sınırlı yoklama | [BookSearchInteractorTests.swift](../BookShelfTests/BookSearch/BookSearchInteractorTests.swift) |
+| Presenter | Domain sonucu → ekran durumu ve Türkçe metin; doğru interactor/router çağrısı; `weak` view | Spy view, **mock** interactor, spy router | Bekleme yok (senkron) | [BookSearchPresenterTests.swift](../BookShelfTests/BookSearch/BookSearchPresenterTests.swift) |
+| Router | `build` bağlantıları (`presenter.view === vc`...), retain cycle yok, push gerçekten oluyor | Gerçek parçalar + `StubBookService` | Bekleme yok; pencere de gerekmez | [BookSearchRouterTests.swift](../BookShelfTests/BookSearch/BookSearchRouterTests.swift) |
+| View | `render(state)` → hangi görünüm görünür; olaylar presenter'a iletiliyor mu (hafif) | Spy presenter, dummy `UIView()` | `loadViewIfNeeded()` | [BookSearchViewControllerTests.swift](../BookShelfTests/BookSearch/BookSearchViewControllerTests.swift) |
+| Uçtan uca | Parçalar birlikte: yaz → sonuç → dokun → detay; hata + "Tekrar dene" | Yok; başlatma argümanları (`-ui-testing`, `-simulate-network-error`) | `waitForExistence`, `assertLabel` | [BookSearchUITests.swift](../BookShelfUITests/BookSearchUITests.swift) |
+
+**Bu modüldeki double'lar, türüne göre** ([BookSearchArchitectureDoubles.swift](../BookShelfTests/BookSearch/BookSearchArchitectureDoubles.swift); her birinin üstünde "neden bu tür?" satırı var):
+
+| Tür | Bu modülde | Neden o tür? |
+|---|---|---|
+| Dummy | Kaydırma eylemi handler'ına verilen `UIView()` | İmza bir view istiyor, kimse kullanmıyor |
+| Stub | `LoadBookInsightsUseCaseStub`, `StubBookService`, `SlowAuthorServiceStub` | Hazır cevap döner; test onun nasıl çağrıldığına bakmaz |
+| Spy | `SearchBooksUseCaseSpy`, `RecentSearchesUseCaseSpy`, `InteractorOutputSpy`, `ViewSpy`, `RouterSpy`, `PresenterSpy` | Çağrıları kaydeder; doğrulamayı test yapar (`XCTAssertEqual(spy.events, [...])`) |
+| Mock | `InteractorMock` (`expect(...)` + `verify()`) | Beklenen çağrıları önceden bilir ve doğrulamayı kendisi yapar |
+| Fake | `InMemoryRecentSearchesStore` | Gerçekten çalışan ama basit depo (disk yok) |
+
+**Interactor: async ve iptali test etmek.** Interactor sonucu dönüş değeriyle değil, output'a **sonra** bildirir. Test metodu `@MainActor` ve `async`; spy output her olayda bir beklentiyi `fulfill()` eder. "Birinci sorgu yavaş, ikincisi hızlı" senaryosu spy use case'in sorgu başına cevabıyla kurulur:
+
+```swift
+@MainActor
+func testNewQueryCancelsSlowPreviousSearch() async {
+    let sut = makeSUT(search: .init(responses: [
+        "yavaş": Response(result: .success([Doubles.book(8)]), delay: .seconds(10)),   // iptal edilebilir bekleme
+        "hızlı": Response(result: .success(Self.atayBooks)),
+    ]))
+
+    sut.interactor.search(query: "yavaş", trigger: .submitted)
+    await Doubles.waitUntil("ilk arama use case'e ulaşmalı") { await sut.search.executedQueries == ["yavaş"] }
+
+    await perform({ sut.interactor.search(query: "hızlı", trigger: .submitted) }, expecting: 3, on: sut.output)
+    await Doubles.waitUntil("ilk arama iptal edilmeli") { await sut.search.cancelledQueries == ["yavaş"] }
+
+    XCTAssertEqual(sut.output.events, [
+        .started("yavaş"), .started("hızlı"), .found([6, 1], query: "hızlı"), .recentLoaded(["hızlı"]),
+    ])   // iptal edilenin ne sonucu ne de hatası var
+}
+```
+
+- **10 saniyelik gecikme testi yavaşlatmaz:** İptal edilince `Task.sleep` hemen fırlatır. Test milisaniyeler sürer.
+- **Bekleme sayısı tam olmalı** (`expecting: 3`): Eksikse kalan olaylar test ilerlerken gelir (sonuç zamanlamaya bağlanır). Fazla olayları ise `XCTAssertEqual(events, [...])` yakalar; bu yüzden `perform` `assertForOverFulfill = false` kurar. Varsayılan ayarda fazladan `fulfill()` bir API ihlalidir ve istisna fırlatır; çağrı interactor'ın `Task`'ından geldiği için kimse yakalayamaz, test süreci çöker ve hatayı açıklayan olay listesi farkı yerine yalnızca "Crash" görülür.
+- **Sınırsız bekleme yok:** `fulfillment(of:timeout:)` ve `waitUntil` ikisi de üst sınırlı. `await task.value` bile bir beklentiye sarılır (`waitForCompletion(of:)`); task hiç bitmezse test asılı kalmasın.
+- **Debounce'u kısaltmak için ayar:** Interactor süreyi `BookSearchConfiguration` ile alır. Testler `.zero`, `1 s` (debounce testi) ya da `10 s` (açık isteğin beklemediğini kanıtlamak için) verir.
+- **Debounce testi harfler arasında `await` ister:** Üç `search` çağrısını aynı ana actor turunda art arda yaparsan ilk ikisinin task'ı hiç başlamadan iptal edilir. Test debounce'u değil "başlamadan önce iptal"i ölçer ve debounce tamamen kaldırılsa bile yeşil kalır (bunu bir mutasyon gösterdi: süre `.zero` yapıldı, test yine geçti). `testDebounceSkipsQueriesTypedWithinTheWindow` harfler arasında 50 ms bekler: önceki task başlamış ve debounce uykusundadır, yeni harf o uykuyu keser. "Başlamadan önce iptal" ayrı bir testte, adıyla: `testSearchesCancelledBeforeTheirTaskStartsNeverRunAndTypingIsNotRecorded`.
+- **İnatçı servis:** `waitsForRelease` ile spy, iptali görmezden gelip sonucu test serbest bıraktığında döndürür. Interactor'ın `await` sonrası iptal kontrolü ancak böyle test edilir: sonuç için `testStaleResultIsDroppedEvenIfServiceIgnoresCancellation`, hata için `testStaleErrorIsDroppedEvenIfServiceIgnoresCancellation`.
+- **`URLSession` gibi iptal:** `errorOnCancel: URLError(.cancelled)` ile spy, iptal edilen isteği `CancellationError` değil `URLError` ile bitirir. Yalnızca `catch is CancellationError` yazan bir interactor bu testte kırılır (`testCancelledSearchFailingWithURLErrorCancelledIsNotReported`).
+
+**Presenter: mock ile.** Presenter'ın işi neredeyse tamamen "doğru çağrıyı doğru argümanla yapmak". Mock beklentiyi önceden alır, doğrulamayı kendisi yapar:
+
+```swift
+@MainActor
+func testTypingSearchesAsTypingAndSubmittingAsSubmitted() {
+    let sut = makeSUT()
+    sut.interactor.expect(
+        .search(query: "at", trigger: .typing),
+        .search(query: "atay", trigger: .typing),
+        .search(query: "atay", trigger: .submitted)
+    )
+
+    sut.presenter.didChangeSearchText("at")
+    sut.presenter.didChangeSearchText("atay")
+    sut.presenter.didSubmitSearch("atay")
+
+    sut.interactor.verify()   // sıra, sayı ve argümanlar mock'un içinde karşılaştırılır
+}
+```
+
+Mock'un bedeli: Test, çağrıların sırasına sıkıca bağlanır; presenter'ı yeniden düzenlersen (ör. çağrı sırasını değiştirirsen) davranış aynı kalsa bile kırılabilir. Bu yüzden presenter'ın **çıktısını** (ekran durumu, metin) spy view ile doğruluyoruz; mock'u yalnızca "çağrının kendisi davranış" olduğu yerde kullanıyoruz.
+
+**Router: bağlantı ve bellek.** `build(...)`'ın döndürdüğü VC'den `as?` ile presenter, interactor ve router'a inilir; geri referansların doğru nesneyi gösterdiği `===` ile, retain cycle olmadığı `autoreleasepool` + `weak var` ile doğrulanır. Uçuşta bir arama Task'ı varken bile VC bırakılınca dördü de serbest kalmalı (`[weak self]` kanıtı).
+
+**Uçtan uca testin yakaladığı hata.** İlk sürümde her başarılı arama geçmişe yazılıyordu. Use case, interactor ve presenter testlerinin hepsi yeşildi; UI testi ise kutudaki metni harf harf silince geçmişte "tutunamayanlar" yerine "tu" gördü: her önek kaydedilmişti. Düzeltme bir tasarım kararıydı (`BookSearchTrigger`: yazarken yapılan arama geçmişe yazılmaz). Birim testleri parçaları, UI testi parçaların birleşimini doğrular; ikisi birbirinin yerine geçmez.
+
+**Uçtan uca testin kanıtlayamadığı şey.** `testNetworkErrorShowsMessageAndRetryButton` "Tekrar dene"ye dokunur; ama `-simulate-network-error` ile servis her istekte hata verdiği için dokunuştan önceki ve sonraki ekran aynıdır. `didTapRetry`'ın gövdesi silinse bile test geçer (bir mutasyonla görüldü). UI testi yalnızca gözlenebilen bir farkı doğrulayabilir. Düğmenin aramayı yeniden başlattığını birim testleri kanıtlar: VC → presenter (`testSearchBarAndRetryForwardToPresenter`) ve presenter → interactor (`testSelectingRecentSearchAndRetrySearchImmediately`).
+
 ## Bu projede nerede?
 
 | Dosya | Tip / fonksiyon | Ne gösteriyor? |
@@ -396,6 +477,11 @@ Bu projede XCTest'i seçmemizin nedenleri: UI testleri ve `measure` zaten XCTest
 | [LabCancellationTests.swift](../BookShelfTests/ConcurrencyLab/LabCancellationTests.swift) | `testCancelledJobStopsEarlyAndReportsCancellation`, `LabProgressRecorder` | `sleep` yerine `AsyncStream` ile "tam o anda" iptal etmek; `@Sendable` closure'dan actor'e kayıt |
 | [ConcurrencyLabViewModelTests.swift](../BookShelfTests/ConcurrencyLab/ConcurrencyLabViewModelTests.swift) | `testCancellingLongTaskReportsCancelled` | `XCTUnwrap` ile task tutamacını almak, `@MainActor` testte task'ın ne zaman başladığı |
 | [ObjCISBNValidatorTests.swift](../BookShelfTests/ObjC/ObjCISBNValidatorTests.swift) | `testBundledBookEightHasChecksumMismatch` | `XCTAssertThrowsError` + hata kodunu incelemek, `XCTAssertNoThrow`, `XCTUnwrap` |
+| [BookSearchArchitectureDoubles.swift](../BookShelfTests/BookSearch/BookSearchArchitectureDoubles.swift) | `SearchBooksUseCaseSpy`, `InteractorMock`, `waitUntil` | Rolüne göre adlandırılmış double'lar; sorgu başına gecikme, iptali görmezden gelen servis; zaman sınırlı yoklama |
+| [BookSearchInteractorTests.swift](../BookShelfTests/BookSearch/BookSearchInteractorTests.swift) | `testNewQueryCancelsSlowPreviousSearch`, `testStaleResultIsDroppedEvenIfServiceIgnoresCancellation`, `testCancelledSearchFailingWithURLErrorCancelledIsNotReported`, `testDebounceSkipsQueriesTypedWithinTheWindow` | Async interactor: iptal (sonuç da hata da düşer), debounce, `fulfillment(of:)` ile tam sayıda olay beklemek |
+| [BookSearchPresenterTests.swift](../BookShelfTests/BookSearch/BookSearchPresenterTests.swift) | `testTypingSearchesAsTypingAndSubmittingAsSubmitted`, `testServiceErrorsMapToMessageAndRetryDecision` | Mock interactor + spy view/router; senkron presenter testi |
+| [BookSearchUseCaseTests.swift](../BookShelfTests/BookSearch/BookSearchUseCaseTests.swift) | `testDottedAndDotlessIAreEquivalent`, `testReviewsAndAuthorAreFetchedConcurrently`, `testCancellationWhileWaitingForAuthorIsNotTreatedAsMissingAuthor` | Türkçe metin kuralları, `async let` zamanlaması, kısmi hata ve iptal |
+| [BookSearchRouterTests.swift](../BookShelfTests/BookSearch/BookSearchRouterTests.swift) | `testReleasingViewControllerReleasesWholeModule`, `testShowBookDetailPushesHostedSwiftUIDetail` | VIPER bağlantıları, retain cycle, pencere olmadan push |
 | [ci.sh](../scripts/ci.sh) | `cmd_unit`, `cmd_coverage` | Testleri komut satırından koşmak, `.xcresult`, kapsam özeti |
 
 ## Sık yapılan hatalar
@@ -549,7 +635,10 @@ let viewModel = BookListViewModel(service: StubBookService(books: .failure(.netw
 7. **Kod kapsamı neyi söyler, neyi söylemez?**
    Testler sırasında hangi satırların çalıştığını söyler; test edilmemiş kod yollarını bulmaya yarar. Doğrulamaların doğru olduğunu söylemez: hiç `XCTAssert` içermeyen bir test de kapsamı artırır. Hedef yüzde bir araçtır; kritik mantığın (view model, servis) yüksek, SwiftUI `body`'lerinin düşük olması normaldir.
 
-8. **XCTest ile Swift Testing arasındaki temel farklar nelerdir?**
+8. **VIPER'da her katmanı nasıl test edersin?**
+   Use case'i stub servisle (kural), interactor'ı spy use case + spy output ile (koordinasyon: iptal, debounce; async test ve `fulfillment(of:)`), presenter'ı spy view + mock/spy interactor + spy router ile (senkron, bekleme yok), router'ı `build` bağlantıları ve retain cycle testiyle, view'ı `render(state)` ile hafifçe test ederim. Uçtan uca akışı bir XCUITest doğrular; birim testleri parçaları, UI testi birleşimi kanıtlar.
+
+9. **XCTest ile Swift Testing arasındaki temel farklar nelerdir?**
    Swift Testing `@Test` makrosunu herhangi bir fonksiyona uygular, `#expect`/`#require` ile doğrular (içinde `await` yazılabilir), suite'leri genelde `struct` ve her test için yeni örnek, testleri varsayılan olarak paralel koşar, `@Test(arguments:)` ile parametreli test ve trait'ler (`.disabled`, `.tags`, `.timeLimit`) sunar. XCTest ise UI testleri (`XCUIApplication`) ve performans ölçümleri için hâlâ gereklidir. İkisi aynı hedefte birlikte çalışabilir.
 
 ## Alıştırmalar

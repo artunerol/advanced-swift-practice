@@ -12,7 +12,7 @@ struct InterviewHubScreen: Screen {
 
     var rootElement: XCUIElement { app.collectionViews[ID.hubList] }
 
-    /// "5 / 16 konu çalışıldı". Listenin en üstünde; liste aşağı kaydırıldıysa ağaçta olmayabilir.
+    /// "5 / 17 konu çalışıldı". Listenin en üstünde; liste aşağı kaydırıldıysa ağaçta olmayabilir.
     var progressLabel: XCUIElement { app.staticTexts[ID.progressLabel] }
     /// Yalnızca en az bir konu çalışıldıysa görünür.
     var resetProgressButton: XCUIElement { app.buttons[ID.resetProgressButton] }

@@ -10,7 +10,7 @@ final class InterviewHubUITests: BookShelfUITestCase {
 
     /// Kataloğun büyüklüğü. Uygulama modülünü import edemediğimiz için `InterviewTopic.all.count`'u buradan göremeyiz;
     /// sayıyı birim testi (`InterviewCatalogTests`) de ayrıca doğrular.
-    private static let topicCount = 16
+    private static let topicCount = 17
 
     /// Uygulamayı açar ve Mülakat sekmesine geçer.
     @MainActor

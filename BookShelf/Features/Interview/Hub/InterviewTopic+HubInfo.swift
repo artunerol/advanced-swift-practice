@@ -7,7 +7,7 @@ private typealias HubTopicID = AccessibilityID.Interview.TopicID
 ///
 /// Neden `InterviewTopic`'in içinde bir alan değil de burada? Konu modeli, konu sahiplerinin doldurduğu
 /// **içerik** sözleşmesidir (soru, cevap, demo). Simge ve satır ipucu ise yalnızca merkez ekranın **sunum**
-/// kararıdır. Ayrı tutunca merkezin görünümünü değiştirmek 16 konu dosyasına dokunmayı gerektirmez.
+/// kararıdır. Ayrı tutunca merkezin görünümünü değiştirmek 17 konu dosyasına dokunmayı gerektirmez.
 /// Bedeli: Bir konunun demosu değişirse buradaki ipucu da elle güncellenmeli. `InterviewCatalogTests`
 /// her konunun burada bir kaydı olduğunu ve simgelerin gerçekten var olduğunu denetler.
 extension InterviewTopic {
@@ -42,6 +42,7 @@ extension InterviewTopic {
         // Mimari
         HubTopicID.architecture: HubInfo(systemImage: "square.stack.3d.up", demoHint: "Demo: okuma notları · VIPER ve MVVM yan yana"),
         HubTopicID.dipVsDi: HubInfo(systemImage: "arrow.up.arrow.down", demoHint: "Demo: 3 sayaç · Environment ile enjeksiyon"),
+        HubTopicID.viperService: HubInfo(systemImage: "magnifyingglass", demoHint: "Demo: UIKit · VIPER ile kitap arama · iptal"),
         // Veri
         HubTopicID.persistence: HubInfo(systemImage: "externaldrive", demoHint: "Demo: 5 depo yan yana · Keychain · @AppStorage"),
         // Süreç

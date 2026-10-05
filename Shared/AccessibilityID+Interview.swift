@@ -13,7 +13,7 @@ extension AccessibilityID {
         static func topicRow(_ topicID: String) -> String { "interview.row.\(topicID)" }
         /// Bölüm başlığı. `sectionKey`: `SectionKey` sabitlerinden biri.
         static func sectionHeader(_ sectionKey: String) -> String { "interview.section.\(sectionKey)" }
-        /// Listenin en üstündeki ilerleme metni, ör. "5 / 16 konu çalışıldı".
+        /// Listenin en üstündeki ilerleme metni, ör. "5 / 17 konu çalışıldı".
         static let progressLabel = "interview.hub.progress"
         /// Satır sağa kaydırılınca soldan çıkan "Çalışıldı" / "İşareti kaldır" eylemi.
         static let swipeStudiedAction = "interview.hub.swipeStudiedAction"
@@ -90,6 +90,7 @@ extension AccessibilityID {
             // Mimari
             static let architecture = "architecture"
             static let dipVsDi = "dipVsDi"
+            static let viperService = "viperService"
             // Veri
             static let persistence = "persistence"
             // Süreç

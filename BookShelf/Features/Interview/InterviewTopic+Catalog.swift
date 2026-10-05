@@ -18,6 +18,7 @@ extension InterviewTopic {
         .delegate,
         .architecture,
         .dipVsDi,
+        .viperService,
         .persistence,
         .cicd,
         .concurrency,

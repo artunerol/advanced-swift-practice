@@ -8,6 +8,8 @@
 
 Bu projede **Okuma Notları** özelliği bilerek iki kez yazıldı: **VIPER + UIKit** ve **MVVM + SwiftUI**. İkisi de aynı Domain katmanını (use case'ler + `NotesRepository` protokolü) kullanıyor. Mülakat sekmesinde "Clean Architecture, VIPER ve MVVM" konusunun **Demo** bölümünde ikisi arasında geçiş yapabilir, birinde eklediğin notu diğerinde görebilirsin.
 
+İkinci VIPER örneği **Kitap Arama**: servis çağrısı yapan, yazarken arayan, eski aramayı iptal eden ve gerçek navigasyon yapan bir modül; dört farklı türde use case ve katman katman testleriyle (§11, Mülakat sekmesinde "VIPER'da bir servis çağrısı nasıl akar?").
+
 ## Temel kavramlar
 
 ### 1. Mimari ne çözer?
@@ -239,6 +241,109 @@ Sorunları: bağımlılık imzada görünmez, global durum testleri birbirine ba
 
 **IoC ile ilişkisi:** Inversion of Control daha geniş bir fikirdir: akışı senin kodun değil çerçeve yönetir ("bizi arama, biz seni ararız"). DI, IoC'nin bağımlılık oluşturmaya uygulanmış bir biçimidir.
 
+### 11. VIPER'da servis çağrısı: adım adım
+
+Okuma Notları'nın VIPER modülü yerel bir depoyla konuşur ve "navigasyonu" bir alert'tir. Mülakattaki VIPER sorusu ise çoğunlukla "ağdan veri çeken bir ekran"dır. Bunun için ikinci bir modül var: **Kitap Arama** ([Features/BookSearch/](../BookShelf/Features/BookSearch/)). Yazarken arar, 600 ms gecikmeli servisi (`LocalBookService`) çağırır, eski aramayı iptal eder, satıra dokununca detayı gerçekten push eder. Mülakat sekmesinde "VIPER'da bir servis çağrısı nasıl akar?" konusunun **Demo** bölümü bu modüldür.
+
+```text
+Features/BookSearch/
+├── Domain/                4 use case + protokolleri, BookInsights, SearchQueryError, RecentSearchesStore (protokol)
+├── Data/                  RecentSearchesStores.swift: UserDefaults ve bellek uygulamaları (ikisi de actor)
+└── Presentation/VIPER/    Contracts, ViewController, Presenter, Interactor, Router, Configuration
+```
+
+**"atay" yazıldığında, adım adım:**
+
+| # | Katman | Ne olur? | Kod |
+|---|---|---|---|
+| 1 | View | `UISearchBar` her harfte delegate'e haber verir. VC karar vermez, iletir. | `searchBar(_:textDidChange:)` → `presenter.didChangeSearchText("atay")` |
+| 2 | Presenter | Metin boş değil: aramayı başlat. (Boş olsaydı: iptal + son aramalar.) | `interactor.search(query: "atay", trigger: .typing)` |
+| 3 | Interactor | Önce uçuştaki aramayı iptal eder, sonra kuralı ANINDA sorar. Tek harf olsaydı ipucu hemen gelirdi; ne debounce ne ağ. | `cancelSearch()`, `search.validatedQuery("atay")` |
+| 4 | Interactor | Bir `Task` açar ve 300 ms bekler (debounce). Bu sürede yeni harf gelirse bu task iptal edilir, servis hiç çağrılmaz. | `try await Task.sleep(for: delay)` |
+| 5 | Interactor → Presenter → View | "Arama başladı" → yükleniyor göstergesi | `output?.didStartSearching(query:)` → `view?.render(.loading)` |
+| 6 | Use case | Ana actor'den çıkılır: servis çağrılır, eşleştirilir, sıralanır. | `SearchBooksUseCase.execute(query:)` → `service.fetchBooks()` |
+| 7 | Interactor | Ana actor'e dönülür. Bu arada yeni arama başladıysa sonuç ESKİ: atılır. Hata da öyle: iptal edilmiş aramanın hatası bildirilmez. | `try Task.checkCancellation()`, `catch _ where Task.isCancelled` |
+| 8 | Presenter → View | `[Book]` → satırlar ("Oğuz Atay · 1972"); sonuç yoksa açıklayan mesaj | `didFindBooks(_:for:)` → `render(.results(rows:))` |
+| 9 | Router | Satıra dokununca detay push edilir; satırı bulan sorgu geçmişe yazılır (kutudaki metin değil: debounce sırasında kutuda "atayz" yazarken satırlar hâlâ "atay"ın olabilir). | `didSelectBook(id:)` → `router.showBookDetail(book)`, `interactor.rememberSearch(resultsQuery)` |
+
+Interactor'ın kalbi ([BookSearchInteractor.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchInteractor.swift), kısaltılmış):
+
+```swift
+func search(query rawQuery: String, trigger: BookSearchTrigger) {
+    cancelSearch()                                         // 1) son arama kazanır
+    let search = useCases.search                           // task'tan ÖNCE yerel sabitlere kopyala (Sendable)
+    let query: String
+    do {
+        query = try search.validatedQuery(rawQuery)        // typed throws: `error` doğrudan SearchQueryError
+    } catch {
+        output?.didRejectQuery(error)                      // 2) kural ihlali: anında, ağsız
+        return
+    }
+    let delay = trigger == .typing ? configuration.debounce : .zero
+    searchTask = Task { [weak self] in                     // ana actor'ü miras alır; self'i TUTMAZ
+        do {
+            if delay > .zero { try await Task.sleep(for: delay) }   // 3) debounce
+            try Task.checkCancellation()
+            self?.output?.didStartSearching(query: query)
+            let books = try await search.execute(query: query)     // 4) ana actor'den çık… geri dön
+            try Task.checkCancellation()                           // 5) geç gelen eski sonucu düşür
+            self?.output?.didFindBooks(books, for: query)
+            // 6) yalnızca açık istekle yapılıp sonuç veren arama geçmişe yazılır (aşağıda)
+        } catch is CancellationError {
+            // sessizce yut: kullanıcı yeni bir şey yazdı ya da ekran kapandı
+        } catch _ where Task.isCancelled {
+            // iptal edilmiş aramanın HATASI da bildirilmez (ör. URLSession'ın URLError(.cancelled)'ı)
+        } catch {
+            self?.output?.didFailSearch(error, query: query)
+        }
+    }
+}
+```
+
+**İptal nerede yaşar, nasıl çalışır?**
+
+- **Sahibi interactor.** Task'ı o açıyor, use case'i o `await` ediyor. Presenter senkron ve UIKit'siz kalır; task tutsaydı testleri bekleme gerektirir ve async mantık sunuma sızardı.
+- `cancel()` task'ı zorla durdurmaz, bir **bayrak** kaldırır (cooperative cancellation). Bayrağa tepki veren yerler: `Task.sleep` (debounce ve servisin taklit gecikmesi hemen `CancellationError` fırlatır), servisin `Task.checkCancellation()`'ı ve interactor'ın `await`'ten sonraki kontrolü.
+- `await`'ten sonraki kontrol neden şart? Servis iptali görmezden gelebilir ya da cevap tam iptal anında gelebilir. Kontrol olmasaydı "ata"nın geç gelen sonucu "atay"ın sonucunu ezerdi: data race olmadan bir **race condition**. Kanıtı: `BookSearchInteractorTests.testStaleResultIsDroppedEvenIfServiceIgnoresCancellation` (iptali hiç görmeyen, "inatçı" bir spy servisle).
+- İptal edilmiş bir aramanın **hiçbir sonucu** bildirilmez: ne kitaplar ne **hata**. `await`'ten sonraki kural hatalar için de geçerli. İptal bir hata değildir, ama her zaman `CancellationError` olarak da gelmez: `URLSession` iptal edilen isteği `URLError(.cancelled)` ile bitirir; servis iptalden hemen önce gerçek bir hata da vermiş olabilir. Bu yüzden ölçüt hatanın türü değil task'ın durumu: `catch _ where Task.isCancelled`. Yalnızca `catch is CancellationError` yazsaydık gerçek ağda her yeni harfte bir an "Arama yapılamadı" görünür, eski aramanın hatası da yeni aramanın sonuçlarını silerdi. Kanıtı: `testCancelledSearchFailingWithURLErrorCancelledIsNotReported`, `testStaleErrorIsDroppedEvenIfServiceIgnoresCancellation`. Özet isteği ve `LoadBookInsightsUseCase` de aynı kuralı uygular.
+- Modül kapanınca `deinit` uçuştaki aramayı iptal eder. Task `self`'i yalnızca `weak` tuttuğu için 600 ms'lik istek modülü hayatta tutmaz (`testReleasingInteractorCancelsInFlightSearch`).
+- Favori bir **komut**tur; iptal edilmez ve task saklanmaz. Kullanıcı "favorile" dedi; ekran kapansa bile tamamlanmalı (Okuma Notları'ndaki "kaydet" ile aynı karar).
+
+**Geçmişe ne yazılır? (`BookSearchTrigger`)** Aramayı neyin başlattığı hem zamanlamayı hem kaydı belirler:
+
+| Tetikleyici | Ne zaman? | Debounce | Sonuç verirse geçmişe yazılır mı? |
+|---|---|---|---|
+| `.typing` | Her harfte | Evet (300 ms) | Hayır: "t", "tu", "tut"… geçmişi kirletirdi |
+| `.submitted` | Ara düğmesi, geçmişten seçim, Tekrar dene | Hayır | Evet |
+| `rememberSearch(_:)` | Yazarak bulunan bir sonuç açıldı | — | Evet: arama işe yaradı. Yazılan, kutudaki metin değil satırı bulan sorgu (`resultsQuery`) |
+
+Bu kuralı ilk sürümde UI testi yakaladı: Her başarılı arama kaydediliyordu ve kutudaki metni harf harf silmek her öneki geçmişe yazıyordu. Birim testleri yeşildi; sorun, parçaların birleştiği yerdeydi. Uçtan uca testin değeri tam olarak bu.
+
+**Neden hepsi `@MainActor`?** (Ayrıntısı [BookSearchContracts.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchContracts.swift) başında.)
+
+1. View bir `UIViewController`; SDK onu `@MainActor` işaretler. View protokolü de `@MainActor` olmalı ki presenter `view?.render(...)`'ı `await`'siz çağırabilsin.
+2. Presenter view'ı, interactor presenter'ı **senkron** çağırır. Hepsi aynı actor'deyse bu çağrılar düz fonksiyon çağrısıdır: hop yok, `await` yok. Değişen durum (`searchText`, son sonuçlar, `searchTask`) tek bir seri yerde yaşar; data race olmadığını derleyici kanıtlar.
+3. `@MainActor` "her şey ana thread'de" demek değildir. Yavaş iş nonisolated `async` use case'lerde; bu projenin ayarlarıyla (Approachable Concurrency kapalı) global concurrent executor'de çalışır. Her `await` ana actor'den çıkar ve geri döner. Formül: **durum ve koordinasyon ana actor'de, hesap ve bekleme dışarıda.**
+4. Interactor'ı ayrı bir actor yapmak mümkündü ama kazanç yok: işi hesap değil koordinasyon. Bedeli: Her `output` çağrısı ana actor'e bir `await` (hop) olur. `MainActor.run` gerekmez; `@MainActor` bir metodu başka bir actor'den çağırmak için `await output?.didFindBooks(...)` yeter, geçişi derleyici yapar. Daha önemlisi presenter → interactor çağrıları da async olur: presenter senkron kalamaz ve durum iki actor arasında bölünür.
+5. Xcode 26'nın yeni proje şablonları aynı fikri modül varsayılanı yapar: **Default Actor Isolation = MainActor** (SE-0466) ve **Approachable Concurrency** (`NonisolatedNonsendingByDefault`, SE-0461: nonisolated async fonksiyon çağıranın actor'ünde çalışır). O ayarlarla use case'ler varsayılan olarak `@MainActor` olurdu; dışarı çıkmak için `nonisolated`, async işi kesinlikle arka plana göndermek için `@concurrent` yazılır. Bu projede ikisi de kapalı (bkz. [01 Proje yapısı](01-proje-yapisi.md)); bu yüzden `@MainActor` açıkça yazılıyor.
+
+**Dört farklı tür use case:**
+
+| Use case | Tür | Kural / politika | Neden presenter ya da depo/servis değil? |
+|---|---|---|---|
+| [SearchBooksUseCase](../BookShelf/Features/BookSearch/Domain/SearchBooksUseCase.swift) | Sorgu + iş kuralı (uzak servis) | Kırp, en az 2 harf; Türkçe büyük/küçük harf ve aksan katlama (I, ı, İ, i aynı; "oguz" → "Oğuz"); önce başlık, sonra yazar, Türkçe alfabetik | "Hangi kitap uygun, hangi sırayla?" bir ürün kararı. Servis veri getirir; presenter yalnızca gösterir. |
+| [LoadBookInsightsUseCase](../BookShelf/Features/BookSearch/Domain/LoadBookInsightsUseCase.swift) | Birleştirme (aggregation) | Yorumlar ve yazar `async let` ile paralel; **yorumlar zorunlu, yazar profili isteğe bağlı**; ortalama tek ondalık | Kısmi hata politikası bir iş kuralı. Presenter'a konsa iki sonucu ve iki hatayı bilmek zorunda kalırdı. |
+| [ToggleFavoriteUseCase](../BookShelf/Features/BookSearch/Domain/ToggleFavoriteUseCase.swift) | Komut (paylaşılan durumda yan etki) | Yeni durumu döndürür | Bugün ince; asıl atomiklik `FavoritesStore.toggle`'da. Değeri sınırda: test dikişi ve kuralın ileride ekleneceği tek yer. |
+| [RecentSearchesUseCase](../BookShelf/Features/BookSearch/Domain/RecentSearchesUseCase.swift) | Yerel depolama politikası | En fazla 5, tekrar yok (arama anahtarına göre), en yeni başta | Depo değişse (UserDefaults/bellek) kural değişmez; kural değişse depo değişmez. Kayıt `update(_:)` ile atomik. |
+
+**Use case'lere neden burada protokol var, Okuma Notları'nda yok?** Okuma Notları'nda tek test dikişi depo; interactor testleri gerçek use case'leri bellek deposuyla çalıştırır (daha az tip, gerçek kurallar teste dahil). Burada interactor'ın asıl işi zamanlama: "ilk sorgu yavaş, ikincisi hızlı" gibi senaryoları sorgu başına kontrol edebilmek için spy use case gerekir. Bedeli: 4 protokol + 4 double ve spy gerçek davranıştan saparsa yanlış güven. Bu riski use case testleri ve UI testi azaltır. Gerekçenin tamamı [BookSearchUseCases.swift](../BookShelf/Features/BookSearch/Domain/BookSearchUseCases.swift) dosyasında.
+
+**Gerçek navigasyon ve gömme.** Router detayı `UIHostingController(rootView: BookDetailView(...))` olarak push eder. Push için bir `UINavigationController` gerekir; ama konu ekranının SwiftUI çubuğu zaten üstte. [BookSearchVIPERContainer.swift](../BookShelf/Features/Interview/Demos/Architecture/BookSearchVIPERContainer.swift) yığını **çubuğu gizli** kurar (iki çubuk olmasın); geri dönüş, detayın alt araç çubuğundaki "Sonuçlara dön" düğmesidir. Araç çubuğunu ekran ekran açıp kapatan, representable'ın `Coordinator`'ıdır (`UINavigationControllerDelegate`). Aynı nedenle arama kutusu `UISearchController` değil, düz bir `UISearchBar`: `UISearchController` navigasyon çubuğunda yaşar.
+
+**Ayar dışarıdan.** Debounce süresi `BookSearchConfiguration` ile enjekte edilir: uygulamada 300 ms, `-ui-testing` ile 0, birim testinde istenen süre. Interactor `ProcessInfo` okumaz; argümanları en dıştaki container okur.
+
+Testlerin katman katman nasıl yazıldığı: [09 XCTest](09-xctest.md) → "VIPER katmanlarını test etmek".
+
 ## Bu projede nerede?
 
 | Dosya | Tip / fonksiyon | Ne gösteriyor? |
@@ -261,6 +366,14 @@ Sorunları: bağımlılık imzada görünmez, global durum testleri birbirine ba
 | [NotesListRouterTests.swift](../BookShelfTests/ReadingNotes/NotesListRouterTests.swift) | `testReleasingViewControllerReleasesWholeModule` | VIPER modülünde retain cycle olmadığının kanıtı |
 | [NotesListPresenterTests.swift](../BookShelfTests/ReadingNotes/NotesListPresenterTests.swift) | `NotesListPresenterTests` | Sahte view/interactor/router ile senkron presenter testi |
 | [NotesArchitectureDoubles.swift](../BookShelfTests/ReadingNotes/NotesArchitectureDoubles.swift) | `ViewSpy`, `InteractorSpy`, `FailingRepository` | Spy, stub, fake farkı |
+| [BookSearchContracts.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchContracts.swift) | `BookSearchViewState`, `BookSearchTrigger`, 5 protokol | Aramanın yolculuğu şeması; "Neden hepsi `@MainActor`?" |
+| [BookSearchInteractor.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchInteractor.swift) | `search(query:trigger:)`, `deinit` | Task saklama, son arama kazanır, debounce, iptal edilmiş aramanın sonucunu da hatasını da düşürmek, `[weak self]` |
+| [BookSearchPresenter.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchPresenter.swift) | `errorState(for:)`, `insightsSummary(for:)` | UIKit'siz, `await`'siz presenter; hata → mesaj + "tekrar denensin mi?" |
+| [BookSearchRouter.swift](../BookShelf/Features/BookSearch/Presentation/VIPER/BookSearchRouter.swift) | `build(dependencies:recentSearchesStore:configuration:)`, `makeBookDetail(for:dependencies:)` | Modül kurulumu; `UIHostingController` push (gerçek navigasyon) |
+| [SearchBooksUseCase.swift](../BookShelf/Features/BookSearch/Domain/SearchBooksUseCase.swift) | `searchKey(for:)`, `matches(in:for:)` | Türkçe katlama ve sıralama: sorgu + iş kuralı türü use case |
+| [LoadBookInsightsUseCase.swift](../BookShelf/Features/BookSearch/Domain/LoadBookInsightsUseCase.swift) | `execute(for:)` | `async let` ile birleştirme; kısmi hata politikası; iptali yeniden fırlatmak |
+| [BookSearchUseCases.swift](../BookShelf/Features/BookSearch/Domain/BookSearchUseCases.swift) | `BookSearchUseCases` | Dört use case türü tablosu; use case'lere neden burada protokol var |
+| [BookSearchVIPERContainer.swift](../BookShelf/Features/Interview/Demos/Architecture/BookSearchVIPERContainer.swift) | `BookSearchVIPERContainer.Coordinator` | Çubuğu gizli `UINavigationController`; çift çubuk olmadan push |
 
 ## Sık yapılan hatalar
 
@@ -360,6 +473,12 @@ Composition root, somut tiplerin seçilip bağlandığı tek yerdir (bu projede 
 **8. Her özellik için use case yazmalı mıyım?**
 İş kuralı varsa evet: kural tek yerde olur, birden çok arayüz paylaşır, UI'sız test edilir. Sadece veri taşıyorsa ekstra katman tören olur; pragmatik ol.
 
+**9. VIPER'da bir servis çağrısı nasıl akar? İptal nerede?**
+View olayı iletir, presenter interactor'a "ara" der, interactor bir `Task` açıp use case'i `await` eder, use case servisi çağırıp kuralları uygular; sonuç output ile presenter'a, oradan ekran durumu olarak view'a döner. Async sınır ve iptal interactor'da: uçuştaki task saklanır, yeni sorgu öncekini iptal eder; iptal edilmiş aramanın ne sonucu ne hatası gösterilir. `await`'ten sonraki iptal kontrolü eski sonucu düşürür; hatada ölçüt `Task.isCancelled`'dır, çünkü `URLSession` iptali `URLError(.cancelled)` olarak gelir.
+
+**10. Neden bütün VIPER modülü `@MainActor`? Ana thread tıkanmaz mı?**
+View zaten `@MainActor`; presenter ve interactor onu senkron çağırdığı için aynı actor'de olmaları hop'suz, race'siz tek bir durum yeri sağlar. Tıkanmaz, çünkü yavaş iş nonisolated async use case'lerde: her `await` ana actor'den çıkar ve geri döner. Xcode 26 şablonlarındaki "Default Actor Isolation = MainActor" aynı fikri modül varsayılanı yapar.
+
 ## Alıştırmalar
 
 **1. Not düzenlemeyi ekle.**
@@ -377,3 +496,7 @@ Favoriler sekmesine "Notlarım" adında bir düğme ekle ve VIPER modülünü (`
 **4. Sayaç için bir "decorator" depo yaz.**
 `NotesRepository`'yi uygulayan ve başka bir depoyu saran `LoggingNotesRepository` yaz: her çağrıyı sayıp asıl depoya iletsin. Demo ekranlarının kodunu değiştirmeden, sadece bağımlılığı değiştirerek kullan.
 *İpucu:* Sayaç değişken durum; tipi `actor` yap. Bu, DIP'in Open/Closed ile birlikte nasıl çalıştığının örneği: davranış eklendi, mevcut kod değişmedi.
+
+**5. Arama sonuçlarını önbelleğe al.**
+Kitap Arama her sorguda servisi baştan çağırıyor. Aynı oturumda servisten gelen kitap listesini bir kez alıp sonraki sorgularda yeniden kullanan bir katman ekle; ekran ve interactor kodu değişmesin.
+*İpucu:* `BookServiceProtocol`'ü uygulayan ve başka bir servisi saran bir `actor CachingBookService` yaz (decorator). Aynı anda gelen iki ilk isteğin servisi iki kez çağırmaması için, devam eden isteği bir `Task` olarak saklayıp ikinci çağıranın da onu `await` etmesini sağla (actor reentrancy). Önce `BookSearchUseCaseTests`'e "iki arama, tek `fetchBooksCallCount`" testini yaz.
